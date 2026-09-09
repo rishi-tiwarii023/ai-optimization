@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from src.arms.application.run_experiment import run_experiment
@@ -125,7 +126,7 @@ def test_run_experiment_executes_five_independent_trials() -> None:
             score=ScoreResult(passed=False, build_passed=False, tests_passed=0, tests_failed=0),
         )
 
-    results = run_experiment(execute_trial=execute_trial)
+    results = run_experiment(execute_trial=execute_trial, write_metrics=False)
     assert len(ExperimentCompiler().compile()) == 5
     assert len(results) == 5
     assert len(set(seen)) == 5
@@ -154,9 +155,31 @@ def test_run_experiment_continues_after_one_trial_failure() -> None:
             score=ScoreResult(passed=False, build_passed=False, tests_passed=0, tests_failed=0),
         )
 
-    results = run_experiment(execute_trial=execute_trial)
+    results = run_experiment(execute_trial=execute_trial, write_metrics=False)
     assert len(results) == 5
     failed = next(item for item in results if item.model_id == "model2")
     assert failed.execution.status == "error"
     assert "isolated failure" in (failed.execution.error_details or "")
     assert sum(1 for item in results if item.execution.status == "success") == 4
+
+
+def test_run_experiment_writes_metrics_json(tmp_path: Path) -> None:
+    def execute_trial(request: TrialRequest) -> FinalTrialResult:
+        return FinalTrialResult(
+            trial_id=request.trial_id,
+            experiment_id=request.experiment_id,
+            task_id=request.task.id,
+            model_id=request.model.id,
+            attempt=request.attempt,
+            execution=TrialResult(status="success"),
+            score=ScoreResult(passed=False, build_passed=False, tests_passed=0, tests_failed=0),
+        )
+
+    path = tmp_path / "metrics.json"
+    results = run_experiment(execute_trial=execute_trial, metrics_path=path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert len(results) == 5
+    assert len(payload["trials"]) == 5
+    assert payload["aggregate"]["trial_count"] == 5
+    assert set(payload["by_model"]) == {"model1", "model2", "model3", "model4", "model5"}
+

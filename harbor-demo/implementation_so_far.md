@@ -45,6 +45,9 @@ The current matrix yields **5** independent executions. `FinalTrialResult` holds
 ### Filesystem artifact storage
 After each completed trial (including failures), `FilesystemArtifactStore` writes an immutable directory `artifacts/run_<trial_id>/` with `manifest.json`, `trajectory.json`, `stdout.log`, `stderr.log`, `patch.diff`, `agent-result.json`, `resource-usage.json`, and `verifier-result.json`. Existing directories are never overwritten.
 
+### Metrics aggregation
+`MetricsCollector.collect()` turns each `FinalTrialResult` (verifier result, resource usage, trial result) into one `ModelMetrics` row: `model_name`, `status`, `build_passed`, `tests_passed`, `test_count`, `execution_time`, `token_usage`, `estimated_cost`, `tool_calls`, `score`. `score` is `1.0` when the verifier passed, otherwise `tests_passed / test_count` (or `0` if there were no tests). `aggregate()` sums counts/time/tokens/cost/tool calls and averages `score` across all trials, plus a `by_model` rollup. `run_experiment()` writes `artifacts/metrics.json` (`trials`, `aggregate`, `by_model`).
+
 ## Layout
 
 ```
@@ -55,6 +58,8 @@ src/arms/adapters/agents/
   openhands_adapter.py   OpenHands execution → TrialResult
 src/arms/adapters/storage/
   filesystem_store.py    immutable per-trial artifact directory
+src/arms/reporting/
+  metrics.py             ModelMetrics + MetricsCollector → metrics.json
 src/arms/application/
   run_trial.py           one trial pipeline
   run_experiment.py      compile + iterate independently
@@ -72,6 +77,7 @@ tests/
   test_openhands_adapter.py    adapter with fake OpenHands + sandbox
   test_run_experiment.py       5 independent trials; sandbox always destroyed
   test_filesystem_store.py       save/load artifacts; refuse overwrite
+  test_metrics.py                per-trial ModelMetrics + aggregate + metrics.json
 ```
 
 ## How to check it works
@@ -96,6 +102,7 @@ That covers:
 | `run_trial` | sandbox → agent → verifier → `FinalTrialResult`; destroy on success and failure |
 | `run_experiment` | 5 independent trials; one failure does not stop the rest |
 | Artifact store | per-trial files written once; second save is rejected |
+| Metrics | one `ModelMetrics` per trial; aggregate + `metrics.json` |
 
 Spot-check the matrix in a REPL (same directory):
 
@@ -114,4 +121,4 @@ Optional, not automated yet:
 - **Live experiment**: `run_experiment()` defaults would call real OpenHands and Docker; tests inject fakes.
 
 ## Not built yet
-Harbor orchestration, reporting.
+Harbor orchestration, leaderboard / HTML reporting.
