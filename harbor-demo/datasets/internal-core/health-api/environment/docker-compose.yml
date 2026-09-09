@@ -1,0 +1,27 @@
+name: health-api-sandbox
+
+services:
+  trial:
+    build:
+      context: ..
+      dockerfile: environment/Dockerfile
+    image: health-api-sandbox:local
+    hostname: health-api-trial
+    init: true
+    environment:
+      TRIAL_ID: ${TRIAL_ID:?set TRIAL_ID for isolated trial execution}
+      HOST: 0.0.0.0
+      PORT: "8000"
+      RUN_TESTS: ${RUN_TESTS:-0}
+      SKIP_SERVER: ${SKIP_SERVER:-0}
+    tmpfs:
+      - /tmp:mode=1777,size=64m
+      - /var/trial:mode=1777,size=8m,uid=1000,gid=1000
+    working_dir: /workspace
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 1.0
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    restart: "no"
