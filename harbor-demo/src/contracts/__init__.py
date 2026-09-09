@@ -7,8 +7,9 @@ from src.contracts.config import (
     TaskSpec,
 )
 from src.contracts.responses import ModelResponse, TokenUsage
+from src.contracts.sandbox import SandboxSession
 from src.contracts.scoring import ScoreResult, VerificationRequest
-from src.contracts.trials import TrialRequest
+from src.contracts.trials import ResourceUsage, TrajectoryEvent, TrialRequest, TrialResult
 
 __all__ = [
     "AgentSpec",
@@ -17,9 +18,13 @@ __all__ = [
     "ModelResponse",
     "ModelSpec",
     "ProviderConfig",
+    "SandboxSession",
     "ScoreResult",
     "TaskSpec",
     "TokenUsage",
+    "TrajectoryEvent",
     "TrialRequest",
+    "TrialResult",
+    "ResourceUsage",
     "VerificationRequest",
 ]
