@@ -4,6 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from src.arms.application.run_trial import run_trial
+from src.arms.reporting.dashboard import generate_dashboard
 from src.arms.reporting.metrics import MetricsCollector
 from src.contracts.config import ExperimentConfig
 from src.contracts.scoring import ScoreResult
@@ -19,6 +20,8 @@ def run_experiment(
     execute_trial: Callable[[TrialRequest], FinalTrialResult] | None = None,
     metrics_path: Path | None = None,
     write_metrics: bool = True,
+    report_path: Path | None = None,
+    write_report: bool = True,
 ) -> list[FinalTrialResult]:
     """Load YAML, expand TrialRequests, run each trial independently, write metrics.json."""
 
@@ -31,7 +34,28 @@ def run_experiment(
         path = metrics_path or (REPO_ROOT / "artifacts" / "metrics.json")
         collector = MetricsCollector()
         collector.write(collector.collect(results), path)
+        if write_report:
+            generate_dashboard(
+                search_root=_report_search_root(path),
+                output_path=report_path or _default_report_path(path),
+            )
     return results
+
+
+def _default_report_path(metrics_path: Path) -> Path:
+    try:
+        metrics_path.resolve().relative_to(REPO_ROOT.resolve())
+    except ValueError:
+        return metrics_path.parent / "reports" / "index.html"
+    return REPO_ROOT / "reports" / "index.html"
+
+
+def _report_search_root(metrics_path: Path) -> Path:
+    try:
+        metrics_path.resolve().relative_to(REPO_ROOT.resolve())
+    except ValueError:
+        return metrics_path.parent
+    return REPO_ROOT
 
 
 def _run_independently(

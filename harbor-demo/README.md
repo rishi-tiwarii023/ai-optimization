@@ -42,11 +42,25 @@ Stateless `OpenHandsAdapter.execute(request, sandbox) -> TrialResult`. Reads `ta
 
 The current matrix yields **5** independent executions. `FinalTrialResult` holds trial identity, `execution`, and `score`.
 
+After all trials, `run_experiment()` writes `artifacts/metrics.json` and then generates the HTML dashboard (`reports/index.html` by default).
+
 ### Filesystem artifact storage
 After each completed trial (including failures), `FilesystemArtifactStore` writes an immutable directory `artifacts/run_<trial_id>/` with `manifest.json`, `trajectory.json`, `stdout.log`, `stderr.log`, `patch.diff`, `agent-result.json`, `resource-usage.json`, and `verifier-result.json`. Existing directories are never overwritten.
 
 ### Metrics aggregation
 `MetricsCollector.collect()` turns each `FinalTrialResult` (verifier result, resource usage, trial result) into one `ModelMetrics` row: `model_name`, `status`, `build_passed`, `tests_passed`, `test_count`, `execution_time`, `token_usage`, `estimated_cost`, `tool_calls`, `score`. `score` is `1.0` when the verifier passed, otherwise `tests_passed / test_count` (or `0` if there were no tests). `aggregate()` sums counts/time/tokens/cost/tool calls and averages `score` across all trials, plus a `by_model` rollup. `run_experiment()` writes `artifacts/metrics.json` (`trials`, `aggregate`, `by_model`).
+
+### HTML reporting dashboard
+`generate_dashboard()` (Pandas + Jinja2) loads **all** `metrics.json` files under the search root, aggregates trials per model, and writes a standalone HTML file.
+
+Default output: `reports/index.html` (template: `templates/report.html`). The dashboard includes:
+
+1. **Experiment Summary** — total trials, passed (score `1.0`), failed
+2. **Model Comparison Table** — Model, Status, Build, Tests, Execution Time, Tokens, Cost, Score
+3. **Charts** — execution time, token usage, cost, and score by model
+4. **Ranking** — highest score, lowest cost, fastest model
+
+`run_experiment()` calls this automatically after writing metrics (`write_report=True` by default). Runs that write metrics outside the repo (for example tests) place the report next to those metrics under `reports/index.html`.
 
 ## Layout
 
@@ -60,15 +74,17 @@ src/arms/adapters/storage/
   filesystem_store.py    immutable per-trial artifact directory
 src/arms/reporting/
   metrics.py             ModelMetrics + MetricsCollector → metrics.json
+  dashboard.py           metrics.json → reports/index.html
 src/arms/application/
   run_trial.py           one trial pipeline
-  run_experiment.py      compile + iterate independently
+  run_experiment.py      compile + iterate independently + report
 src/contracts/           TrialRequest, TrialResult, FinalTrialResult, SandboxSession, ScoreResult
 src/experiments/
   experiment.yaml        matrix (IDs)
   models.yaml            alias → hf_id
   loader.py              resolve IDs
   compiler.py            expand TrialRequests
+templates/report.html    Jinja2 HTML dashboard
 datasets/internal-core/health-api/
   task.toml, instruction.md, starter/, tests/, environment/
 tests/
@@ -78,6 +94,7 @@ tests/
   test_run_experiment.py       5 independent trials; sandbox always destroyed
   test_filesystem_store.py       save/load artifacts; refuse overwrite
   test_metrics.py                per-trial ModelMetrics + aggregate + metrics.json
+  test_dashboard.py              HTML report from metrics.json; generated after run
 ```
 
 ## How to check it works
@@ -100,9 +117,10 @@ That covers:
 | Verifier | scoring + JSON artefact, Docker calls mocked |
 | OpenHands adapter | mount, load task instructions, capture trajectory/patch/logs; error and timeout map to `TrialResult.status` |
 | `run_trial` | sandbox → agent → verifier → `FinalTrialResult`; destroy on success and failure |
-| `run_experiment` | 5 independent trials; one failure does not stop the rest |
+| `run_experiment` | 5 independent trials; one failure does not stop the rest; writes `metrics.json` and HTML report |
 | Artifact store | per-trial files written once; second save is rejected |
 | Metrics | one `ModelMetrics` per trial; aggregate + `metrics.json` |
+| Dashboard | loads every `metrics.json`; writes HTML with summary, comparison table, charts, ranking |
 
 Spot-check the matrix in a REPL (same directory):
 
@@ -118,7 +136,7 @@ Optional, not automated yet:
 - **Hugging Face**: needs `HF_API_KEY` in `.env`. A live generate call is still manual.
 - **Real Docker verifier**: `test_verifier.py` does not start containers. A live compose run needs Docker Desktop.
 - **Live OpenHands**: `test_openhands_adapter.py` does not start the OpenHands CLI. A real run needs the binary, a mounted workspace, and `HF_API_KEY`.
-- **Live experiment**: `run_experiment()` defaults would call real OpenHands and Docker; tests inject fakes.
+- **Live experiment**: `run_experiment()` defaults would call real OpenHands and Docker; tests inject fakes. After a live run, open `reports/index.html`.
 
 ## Not built yet
-Harbor orchestration, leaderboard / HTML reporting.
+Harbor orchestration.

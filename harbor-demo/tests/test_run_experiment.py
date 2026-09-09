@@ -182,4 +182,5 @@ def test_run_experiment_writes_metrics_json(tmp_path: Path) -> None:
     assert len(payload["trials"]) == 5
     assert payload["aggregate"]["trial_count"] == 5
     assert set(payload["by_model"]) == {"model1", "model2", "model3", "model4", "model5"}
+    assert (tmp_path / "reports" / "index.html").is_file()
 
