@@ -42,6 +42,9 @@ Stateless `OpenHandsAdapter.execute(request, sandbox) -> TrialResult`. Reads `ta
 
 The current matrix yields **5** independent executions. `FinalTrialResult` holds trial identity, `execution`, and `score`.
 
+### Filesystem artifact storage
+After each completed trial (including failures), `FilesystemArtifactStore` writes an immutable directory `artifacts/run_<trial_id>/` with `manifest.json`, `trajectory.json`, `stdout.log`, `stderr.log`, `patch.diff`, `agent-result.json`, `resource-usage.json`, and `verifier-result.json`. Existing directories are never overwritten.
+
 ## Layout
 
 ```
@@ -50,6 +53,8 @@ src/adapters/verifiers/  Verifier port + Docker sandbox scorer
 src/adapters/sandbox/    per-trial workspace copy + destroy
 src/arms/adapters/agents/
   openhands_adapter.py   OpenHands execution → TrialResult
+src/arms/adapters/storage/
+  filesystem_store.py    immutable per-trial artifact directory
 src/arms/application/
   run_trial.py           one trial pipeline
   run_experiment.py      compile + iterate independently
@@ -66,6 +71,7 @@ tests/
   test_verifier.py             verifier with a fake Docker runner
   test_openhands_adapter.py    adapter with fake OpenHands + sandbox
   test_run_experiment.py       5 independent trials; sandbox always destroyed
+  test_filesystem_store.py       save/load artifacts; refuse overwrite
 ```
 
 ## How to check it works
@@ -89,6 +95,7 @@ That covers:
 | OpenHands adapter | mount, load task instructions, capture trajectory/patch/logs; error and timeout map to `TrialResult.status` |
 | `run_trial` | sandbox → agent → verifier → `FinalTrialResult`; destroy on success and failure |
 | `run_experiment` | 5 independent trials; one failure does not stop the rest |
+| Artifact store | per-trial files written once; second save is rejected |
 
 Spot-check the matrix in a REPL (same directory):
 

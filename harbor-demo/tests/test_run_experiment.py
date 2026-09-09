@@ -86,6 +86,9 @@ def test_run_trial_pipeline_and_destroys_sandbox(tmp_path: Path) -> None:
     assert factory.sandboxes[0].destroyed is True
     assert agent.calls == [request.trial_id]
     assert verifier.calls == [request.trial_id]
+    artifacts = tmp_path / "artifacts" / "run_exp__health-api__openhands__model1__1"
+    assert (artifacts / "manifest.json").is_file()
+    assert (artifacts / "verifier-result.json").is_file()
 
 
 def test_run_trial_destroys_sandbox_when_agent_fails(tmp_path: Path) -> None:

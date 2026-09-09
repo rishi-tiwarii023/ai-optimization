@@ -7,6 +7,7 @@ from src.adapters.sandbox.docker_sandbox import DockerSandboxFactory
 from src.adapters.verifiers.factory import create_verifier
 from src.adapters.verifiers.verifier import Verifier
 from src.arms.adapters.agents.openhands_adapter import OpenHandsAdapter
+from src.arms.adapters.storage.filesystem_store import FilesystemArtifactStore
 from src.contracts.sandbox import SandboxSession
 from src.contracts.scoring import ScoreResult, VerificationRequest
 from src.contracts.trials import FinalTrialResult, TrialRequest, TrialResult
@@ -25,15 +26,17 @@ def run_trial(
     agent: OpenHandsAdapter | None = None,
     verifier: Verifier | None = None,
     artefact_dir: Path | None = None,
+    artifact_store: FilesystemArtifactStore | None = None,
     repo_root: Path | None = None,
 ) -> FinalTrialResult:
-    """Sandbox -> OpenHands -> verifier -> FinalTrialResult. Always destroy the sandbox."""
+    """Sandbox -> OpenHands -> verifier -> persist artifacts -> FinalTrialResult. Always destroy the sandbox."""
 
     root = repo_root or REPO_ROOT
     factory = sandbox_factory or DockerSandboxFactory(repo_root=root)
     agent_runtime = agent or OpenHandsAdapter(repo_root=root)
     scorer = verifier or create_verifier()
     artefacts = artefact_dir or (root / "artefacts")
+    store = artifact_store or FilesystemArtifactStore(root / "artifacts")
 
     sandbox = factory.create(request)
     execution: TrialResult | None = None
@@ -65,7 +68,7 @@ def run_trial(
 
     assert execution is not None
     assert score is not None
-    return FinalTrialResult(
+    result = FinalTrialResult(
         trial_id=request.trial_id,
         experiment_id=request.experiment_id,
         task_id=request.task.id,
@@ -74,6 +77,8 @@ def run_trial(
         execution=execution,
         score=score,
     )
+    store.save_trial_artifacts(result)
+    return result
 
 
 def _task_path(request: TrialRequest, repo_root: Path) -> Path:
