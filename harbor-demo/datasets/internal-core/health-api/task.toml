@@ -1,0 +1,16 @@
+task_id = "health-api"
+name = "Health API"
+description = """
+Build a FastAPI application that exposes GET /health.
+
+The endpoint must return HTTP 200 with JSON body {"status":"ok"}.
+The ASGI app must be importable as app.main:app so verification tests can load it.
+"""
+timeout = 300
+
+[acceptance]
+criteria = [
+  "Application starts successfully",
+  "GET /health returns HTTP 200",
+  "Response body equals {\"status\":\"ok\"}",
+]
