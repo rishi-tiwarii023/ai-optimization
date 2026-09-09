@@ -75,9 +75,12 @@ src/arms/adapters/storage/
 src/arms/reporting/
   metrics.py             ModelMetrics + MetricsCollector → metrics.json
   dashboard.py           metrics.json → reports/index.html
+src/arms/cli/
+  run_experiment.py      python -m arms.cli.run_experiment
 src/arms/application/
   run_trial.py           one trial pipeline
   run_experiment.py      compile + iterate independently + report
+arms/cli/                module shim so `python -m arms.cli.run_experiment` works from this directory
 src/contracts/           TrialRequest, TrialResult, FinalTrialResult, SandboxSession, ScoreResult
 src/experiments/
   experiment.yaml        matrix (IDs)
@@ -95,6 +98,7 @@ tests/
   test_filesystem_store.py       save/load artifacts; refuse overwrite
   test_metrics.py                per-trial ModelMetrics + aggregate + metrics.json
   test_dashboard.py              HTML report from metrics.json; generated after run
+  test_cli_run_experiment.py     CLI summary: 5 requests, results, bundles, 1 dashboard
 ```
 
 ## How to check it works
@@ -121,6 +125,24 @@ That covers:
 | Artifact store | per-trial files written once; second save is rejected |
 | Metrics | one `ModelMetrics` per trial; aggregate + `metrics.json` |
 | Dashboard | loads every `metrics.json`; writes HTML with summary, comparison table, charts, ranking |
+| CLI | `python -m arms.cli.run_experiment` compiles 5 requests, runs the pipeline, prints the summary |
+
+Run the experiment from `harbor-demo/` (live Docker + OpenHands unless you inject fakes in tests):
+
+```powershell
+python -m arms.cli.run_experiment
+```
+
+Flow: read `experiment.yaml` → TrialRequests → per trial (sandbox, OpenHands, verifier, artifacts) → aggregate `metrics.json` → `reports/index.html` → print summary.
+
+Expected summary for the current matrix:
+
+```
+TrialRequests:     5
+TrialResults:      5
+Artifact bundles:  5
+HTML dashboard:    1
+```
 
 Spot-check the matrix in a REPL (same directory):
 
@@ -135,7 +157,7 @@ Optional, not automated yet:
 - **Task tests** (`datasets/internal-core/health-api/tests/`): fail on the incomplete starter; pass after a correct `/health` implementation.
 - **Hugging Face**: needs `HF_API_KEY` in `.env`. A live generate call is still manual.
 - **Real Docker verifier**: `test_verifier.py` does not start containers. A live compose run needs Docker Desktop.
-- **Live OpenHands**: `test_openhands_adapter.py` does not start the OpenHands CLI. A real run needs the binary, a mounted workspace, and `HF_API_KEY`.
+- **Live OpenHands**: `test_openhands_adapter.py` does not start the OpenHands CLI. A real run needs the **headless CLI** on `PATH` (or `OPENHANDS_BIN`), a mounted workspace, and `HF_API_KEY`. The `openhands-ai` pip package in the venv is the HTTP agent-server, not that CLI — without the binary every trial errors immediately.
 - **Live experiment**: `run_experiment()` defaults would call real OpenHands and Docker; tests inject fakes. After a live run, open `reports/index.html`.
 
 ## Not built yet

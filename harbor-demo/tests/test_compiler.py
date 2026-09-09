@@ -21,10 +21,10 @@ def test_load_experiment_from_yaml() -> None:
     assert task.path == "datasets/internal-core/health-api"
     assert task.name == "Health API"
     assert [model.hf_id for model in config.enabled_models()] == [
-        "google/gemma-7b-it",
+        "google/gemma-3-12b-it",
         "deepseek-ai/DeepSeek-V3",
         "meta-llama/Llama-3.3-70B-Instruct",
-        "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "meta-llama/Llama-3.1-8B-Instruct",
         "Qwen/Qwen2.5-Coder-32B-Instruct",
     ]
 

@@ -36,7 +36,7 @@ def _request(task_path: str) -> TrialRequest:
         experiment_id="exp",
         task=TaskSpec(id="health-api", name="Health API", path=task_path),
         agent=AgentSpec(id="openhands"),
-        model=ModelSpec(id="model1", hf_id="google/gemma-7b-it"),
+        model=ModelSpec(id="model1", hf_id="google/gemma-3-12b-it"),
         attempt=1,
         provider=ProviderConfig(),
     )
@@ -80,7 +80,7 @@ def test_execute_captures_trajectory_patch_and_logs(tmp_path: Path) -> None:
     assert result.error_details is None
     assert result.patch is not None and "print('health')" in result.patch
     assert sandbox.mount_calls == 1
-    assert runner.calls[0]["model"].inference_id == "google/gemma-7b-it"
+    assert runner.calls[0]["model"].inference_id == "google/gemma-3-12b-it"
     assert "Add GET /health" in runner.calls[0]["instruction"]
     assert 'Return {"status":"ok"}.' in runner.calls[0]["instruction"]
     kinds = [event.kind for event in result.trajectory]
@@ -89,7 +89,7 @@ def test_execute_captures_trajectory_patch_and_logs(tmp_path: Path) -> None:
     assert "command" in kinds
     assert "file_change" in kinds
     assert "task_id=health-api" in result.execution_logs
-    assert "model_id=google/gemma-7b-it" in result.execution_logs
+    assert "model_id=google/gemma-3-12b-it" in result.execution_logs
     assert "attempt_id=1" in result.execution_logs
     assert runner.calls[0]["timeout_seconds"] == 120.0
     assert result.resource_usage is not None
@@ -128,3 +128,20 @@ def test_execute_timeout_status(tmp_path: Path) -> None:
     result = adapter.execute(_request(str(task_dir)), FakeSandbox(workspace))
     assert result.status == "timeout"
     assert result.error_details is not None
+
+
+def test_runner_reports_missing_headless_cli(monkeypatch, tmp_path: Path) -> None:
+    from src.arms.adapters.agents.openhands_adapter import SubprocessOpenHandsRunner
+
+    monkeypatch.delenv("OPENHANDS_BIN", raising=False)
+    monkeypatch.setattr("src.arms.adapters.agents.openhands_adapter.shutil.which", lambda name: None)
+    runner = SubprocessOpenHandsRunner(binary="openhands-missing-for-test")
+    outcome = runner.run(
+        model=ModelSpec(id="model1", hf_id="google/gemma-3-12b-it"),
+        workspace=tmp_path,
+        instruction="do the task",
+        timeout_seconds=5.0,
+        api_key="x",
+    )
+    assert outcome.error is not None
+    assert "headless CLI not found" in outcome.error

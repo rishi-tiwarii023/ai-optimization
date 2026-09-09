@@ -3,7 +3,9 @@ from __future__ import annotations
 import difflib
 import json
 import os
+import shutil
 import subprocess
+import sys
 import time
 import tomllib
 from dataclasses import dataclass, field
@@ -78,8 +80,11 @@ class SubprocessOpenHandsRunner:
         env["LLM_API_KEY"] = api_key
         env["HF_TOKEN"] = api_key
         env["HUGGINGFACE_API_KEY"] = api_key
+        command = _resolve_openhands_command(self._binary)
+        if command is None:
+            return OpenHandsOutcome(error=_missing_openhands_message(self._binary))
         args = [
-            self._binary,
+            *command,
             "--headless",
             "--directory",
             str(workspace),
@@ -109,9 +114,7 @@ class SubprocessOpenHandsRunner:
                 timed_out=True,
             )
         except FileNotFoundError:
-            return OpenHandsOutcome(
-                error=f"OpenHands binary not found: {self._binary}",
-            )
+            return OpenHandsOutcome(error=_missing_openhands_message(self._binary))
         logs = _join_logs(completed.stdout, completed.stderr)
         events = _parse_event_lines(completed.stdout)
         error = None
@@ -314,6 +317,30 @@ def _execution_logs(
     )
     body = outcome.logs.strip()
     return f"{header}\n{body}".strip()
+
+
+def _resolve_openhands_command(binary: str) -> list[str] | None:
+    configured = os.environ.get("OPENHANDS_BIN", binary).strip()
+    if not configured:
+        return None
+    as_path = Path(configured).expanduser()
+    if as_path.is_file():
+        return [str(as_path)]
+    found = shutil.which(configured)
+    if found:
+        return [found]
+    scripts = Path(sys.executable).resolve().parent / configured
+    if scripts.is_file():
+        return [str(scripts)]
+    return None
+
+
+def _missing_openhands_message(binary: str) -> str:
+    return (
+        f"OpenHands headless CLI not found ({binary!r} is not on PATH). "
+        "This venv's openhands-ai package is the HTTP agent-server, not the "
+        "headless CLI. Install the OpenHands CLI, put it on PATH, or set OPENHANDS_BIN."
+    )
 
 
 def _join_logs(stdout: str | None, stderr: str | None) -> str:
