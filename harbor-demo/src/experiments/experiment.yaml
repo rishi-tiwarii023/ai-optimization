@@ -1,35 +1,15 @@
-name: harbor-openhands-hf
+experiment_id: harbor-openhands-hf
+tasks:
+  - health-api
+agents:
+  - openhands
+models:
+  - model1
+  - model2
+  - model3
+  - model4
+  - model5
 attempts: 1
 provider:
   type: huggingface
   timeout_seconds: 120
-tasks:
-  - id: health-api
-    name: Health API
-    path: datasets/internal-core/health-api
-    enabled: true
-agents:
-  - id: openhands
-    name: OpenHands
-    enabled: true
-models:
-  - id: google/gemma-7b-it
-    enabled: true
-    max_new_tokens: 512
-    temperature: 0.2
-  - id: deepseek-ai/DeepSeek-V3
-    enabled: true
-    max_new_tokens: 512
-    temperature: 0.2
-  - id: meta-llama/Llama-3.3-70B-Instruct
-    enabled: true
-    max_new_tokens: 512
-    temperature: 0.2
-  - id: mistralai/Mixtral-8x7B-Instruct-v0.1
-    enabled: true
-    max_new_tokens: 512
-    temperature: 0.2
-  - id: Qwen/Qwen2.5-Coder-32B-Instruct
-    enabled: true
-    max_new_tokens: 512
-    temperature: 0.2

@@ -1,0 +1,21 @@
+models:
+  model1:
+    hf_id: google/gemma-7b-it
+    max_new_tokens: 512
+    temperature: 0.2
+  model2:
+    hf_id: deepseek-ai/DeepSeek-V3
+    max_new_tokens: 512
+    temperature: 0.2
+  model3:
+    hf_id: meta-llama/Llama-3.3-70B-Instruct
+    max_new_tokens: 512
+    temperature: 0.2
+  model4:
+    hf_id: mistralai/Mixtral-8x7B-Instruct-v0.1
+    max_new_tokens: 512
+    temperature: 0.2
+  model5:
+    hf_id: Qwen/Qwen2.5-Coder-32B-Instruct
+    max_new_tokens: 512
+    temperature: 0.2

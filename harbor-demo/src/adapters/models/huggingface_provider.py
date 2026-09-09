@@ -27,7 +27,7 @@ class HuggingFaceProvider(ModelProvider):
         try:
             output, usage = self._complete(prompt=prompt, model=model)
             return ModelResponse(
-                model_name=model.id,
+                model_name=model.inference_id,
                 output=output,
                 token_usage=usage,
                 latency=time.perf_counter() - started,
@@ -35,7 +35,7 @@ class HuggingFaceProvider(ModelProvider):
             )
         except Exception as exc:  # noqa: BLE001
             return ModelResponse(
-                model_name=model.id,
+                model_name=model.inference_id,
                 output=None,
                 token_usage=None,
                 latency=time.perf_counter() - started,
@@ -45,7 +45,7 @@ class HuggingFaceProvider(ModelProvider):
     def _complete(self, prompt: str, model: ModelSpec) -> tuple[str, TokenUsage | None]:
         client = InferenceClient(token=self._api_key, timeout=self._timeout_seconds)
         kwargs: dict[str, Any] = {
-            "model": model.id,
+            "model": model.inference_id,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": model.max_new_tokens,
             "temperature": model.temperature,

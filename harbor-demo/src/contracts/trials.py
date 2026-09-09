@@ -9,9 +9,13 @@ class TrialRequest(BaseModel):
     """One unit of work from Task × Agent × Model × Attempt expansion."""
 
     trial_id: str
-    experiment_name: str
+    experiment_id: str
     task: TaskSpec
     agent: AgentSpec
     model: ModelSpec
     attempt: int = Field(ge=1)
     provider: ProviderConfig
+
+    @property
+    def experiment_name(self) -> str:
+        return self.experiment_id

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from src.contracts.config import ExperimentConfig
 from src.contracts.trials import TrialRequest
-from src.experiments.loader import DEFAULT_EXPERIMENT_PATH, load_experiment
+from src.experiments.loader import load_experiment
 
 
 class ExperimentCompiler:
@@ -25,13 +25,13 @@ class ExperimentCompiler:
                         trials.append(
                             TrialRequest(
                                 trial_id=_trial_id(
-                                    experiment=config.name,
+                                    experiment_id=config.experiment_id,
                                     task_id=task.id,
                                     agent_id=agent.id,
                                     model_id=model.id,
                                     attempt=attempt,
                                 ),
-                                experiment_name=config.name,
+                                experiment_id=config.experiment_id,
                                 task=task,
                                 agent=agent,
                                 model=model,
@@ -44,10 +44,10 @@ class ExperimentCompiler:
 
 def _trial_id(
     *,
-    experiment: str,
+    experiment_id: str,
     task_id: str,
     agent_id: str,
     model_id: str,
     attempt: int,
 ) -> str:
-    return f"{experiment}::{task_id}::{agent_id}::{model_id}::{attempt}"
+    return f"{experiment_id}::{task_id}::{agent_id}::{model_id}::{attempt}"
