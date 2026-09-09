@@ -33,7 +33,7 @@ class HuggingFaceProvider(ModelProvider):
                 latency=time.perf_counter() - started,
                 error=None,
             )
-        except Exception as exc:  # noqa: BLE001 - map any provider failure into schema
+        except Exception as exc:  # noqa: BLE001
             return ModelResponse(
                 model_name=model.id,
                 output=None,

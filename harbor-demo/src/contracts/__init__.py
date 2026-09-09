@@ -7,6 +7,7 @@ from src.contracts.config import (
     TaskSpec,
 )
 from src.contracts.responses import ModelResponse, TokenUsage
+from src.contracts.scoring import ScoreResult, VerificationRequest
 from src.contracts.trials import TrialRequest
 
 __all__ = [
@@ -16,7 +17,9 @@ __all__ = [
     "ModelResponse",
     "ModelSpec",
     "ProviderConfig",
+    "ScoreResult",
     "TaskSpec",
     "TokenUsage",
     "TrialRequest",
+    "VerificationRequest",
 ]

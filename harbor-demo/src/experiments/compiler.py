@@ -8,7 +8,7 @@ from src.experiments.loader import DEFAULT_EXPERIMENT_PATH, load_experiment
 
 
 class ExperimentCompiler:
-    """Stateless compiler: experiment.yaml (or config) → TrialRequest list."""
+    """Stateless compiler: experiment.yaml (or config) to TrialRequest list."""
 
     def compile(
         self, source: ExperimentConfig | str | Path | None = None
