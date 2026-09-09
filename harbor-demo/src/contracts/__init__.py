@@ -9,7 +9,13 @@ from src.contracts.config import (
 from src.contracts.responses import ModelResponse, TokenUsage
 from src.contracts.sandbox import SandboxSession
 from src.contracts.scoring import ScoreResult, VerificationRequest
-from src.contracts.trials import ResourceUsage, TrajectoryEvent, TrialRequest, TrialResult
+from src.contracts.trials import (
+    FinalTrialResult,
+    ResourceUsage,
+    TrajectoryEvent,
+    TrialRequest,
+    TrialResult,
+)
 
 __all__ = [
     "AgentSpec",
@@ -25,6 +31,7 @@ __all__ = [
     "TrajectoryEvent",
     "TrialRequest",
     "TrialResult",
+    "FinalTrialResult",
     "ResourceUsage",
     "VerificationRequest",
 ]

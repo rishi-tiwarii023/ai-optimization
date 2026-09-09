@@ -9,3 +9,6 @@ class SandboxSession(Protocol):
 
     def mount(self) -> Path:
         """Expose the workspace path OpenHands should edit."""
+
+    def destroy(self) -> None:
+        """Tear down the sandbox and discard its workspace."""

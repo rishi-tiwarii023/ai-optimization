@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from src.contracts.config import AgentSpec, ModelSpec, ProviderConfig, TaskSpec
+from src.contracts.scoring import ScoreResult
 
 
 class TrialRequest(BaseModel):
@@ -44,3 +45,15 @@ class TrialResult(BaseModel):
     execution_logs: str = ""
     resource_usage: ResourceUsage | None = None
     error_details: str | None = None
+
+
+class FinalTrialResult(BaseModel):
+    """One completed trial: agent execution plus deterministic score."""
+
+    trial_id: str
+    experiment_id: str
+    task_id: str
+    model_id: str
+    attempt: int = Field(ge=1)
+    execution: TrialResult
+    score: ScoreResult
