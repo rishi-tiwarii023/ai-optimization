@@ -7,7 +7,7 @@ Current demo matrix: **1 task × 1 agent × 5 models × 1 attempt = 5 trials**.
 ## What exists
 
 ### Model adapter
-Stateless client for a **local LiteLLM/Laguna** proxy behind a `ModelProvider` interface. `LAGUNA_API_KEY`, `LAGUNA_API_ENDPOINT` (typically `http://127.0.0.1:4000`), and `LAGUNA_PROXY_URL` come from `.env`. Requests to Laguna are sent through that HTTP proxy (localhost is not bypassed) so corporate firewalls do not drop plaintext HTTP responses. Inference uses `ModelSpec.hf_id`. OpenHands gets `LLM_MODEL=litellm_proxy/{hf_id}` and `LLM_BASE_URL` pointing at local Laguna.
+Stateless client for a **local LiteLLM/Laguna** proxy behind a `ModelProvider` interface. `LAGUNA_API_KEY`, `LAGUNA_API_ENDPOINT` (typically `http://127.0.0.1:4000`), and `LAGUNA_PROXY_URL` come from `.env`. Requests to Laguna are sent through that HTTP proxy (localhost is not bypassed) so corporate firewalls do not drop plaintext HTTP responses. Inference uses `ModelSpec.laguna_id`. OpenHands gets `LLM_MODEL=litellm_proxy/{laguna_id}` and `LLM_BASE_URL` pointing at local Laguna.
 
 ### Experiment matrix and compiler
 `src/experiments/experiment.yaml` is the **matrix only**: `experiment_id`, `tasks`, `agents`, `models`, `attempts`.
@@ -31,7 +31,7 @@ Reproducible Python 3.12 image with FastAPI, uvicorn, pytest, **httpx**. One Com
 `Verifier` port + `DockerSandboxVerifier`. Independent of OpenHands: scores a workspace with Docker Compose only. Checks container start, image/app build, `GET /health` route, and pytest. Returns `ScoreResult` (`passed`, `build_passed`, `tests_passed`, `tests_failed`) and writes JSON artefacts under `artefacts/`.
 
 ### OpenHands agent adapter
-Stateless `OpenHandsAdapter.execute(request, sandbox) -> TrialResult`. Reads `task_id`, `model_id` (`hf_id`), and `attempt_id` from `TrialRequest`, mounts the sandbox workspace, loads instructions from `task.toml` / `instruction.md`, starts OpenHands with the configured model, and captures messages, tool calls, commands, file changes, and a unified patch.
+Stateless `OpenHandsAdapter.execute(request, sandbox) -> TrialResult`. Reads `task_id`, `model_id` (`laguna_id`), and `attempt_id` from `TrialRequest`, mounts the sandbox workspace, loads instructions from `task.toml` / `instruction.md`, starts OpenHands with the configured model, and captures messages, tool calls, commands, file changes, and a unified patch.
 
 `TrialResult` contains `status`, `patch`, `trajectory`, `execution_logs`, `resource_usage`, `error_details`. The adapter does not score, store, or report. OpenHands is invoked through an injected runner (default: headless CLI). Tests use a fake runner.
 
@@ -84,7 +84,7 @@ arms/cli/                module shim so `python -m arms.cli.run_experiment` work
 src/contracts/           TrialRequest, TrialResult, FinalTrialResult, SandboxSession, ScoreResult
 src/experiments/
   experiment.yaml        matrix (IDs)
-  models.yaml            alias → hf_id
+  models.yaml            alias → laguna_id
   loader.py              resolve IDs
   compiler.py            expand TrialRequests
 templates/report.html    Jinja2 HTML dashboard
@@ -116,7 +116,7 @@ That covers:
 
 | Piece | What the tests prove |
 | --- | --- |
-| Loader | `health-api` path + name from `task.toml`; aliases map to the five `hf_id`s |
+| Loader | `health-api` path + name from `task.toml`; aliases map to the five `laguna_id`s |
 | Compiler | exactly 5 `TrialRequest`s, one per model |
 | Verifier | scoring + JSON artefact, Docker calls mocked |
 | OpenHands adapter | mount, load task instructions, capture trajectory/patch/logs; error and timeout map to `TrialResult.status` |

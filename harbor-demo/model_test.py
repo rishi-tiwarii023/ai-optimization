@@ -29,7 +29,7 @@ def main() -> None:
     failed: list[str] = []
 
     for key, spec in models.items():
-        model_id = spec["hf_id"]
+        model_id = spec["laguna_id"]
         print(f"Calling {key} ({model_id})...", flush=True)
         payload = {
             "model": model_id,

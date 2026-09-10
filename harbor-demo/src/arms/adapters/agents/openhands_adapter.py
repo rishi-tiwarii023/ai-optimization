@@ -81,9 +81,6 @@ class SubprocessOpenHandsRunner:
         env.update(extra_env or {})
         env["LLM_MODEL"] = _litellm_model(model.inference_id, prefix=model_prefix)
         env["LLM_API_KEY"] = api_key
-        if model_prefix.startswith("huggingface"):
-            env["HF_TOKEN"] = api_key
-            env["HUGGINGFACE_API_KEY"] = api_key
         command = _resolve_openhands_command(self._binary)
         if command is None:
             return OpenHandsOutcome(error=_missing_openhands_message(self._binary))
@@ -222,21 +219,19 @@ class OpenHandsAdapter:
 
     def _llm_runtime(self, request: TrialRequest) -> tuple[str, str, dict[str, str]]:
         provider = request.provider
-        if provider.type == "laguna":
-            prefix = (
-                provider.prefix or self._settings.laguna_model_prefix or "litellm_proxy"
-            ).strip()
-            extra: dict[str, str] = {}
-            endpoint = (provider.api_endpoint or self._settings.laguna_api_endpoint).strip()
-            proxy = (provider.proxy_url or self._settings.laguna_proxy_url).strip()
-            if endpoint:
-                extra["LLM_BASE_URL"] = endpoint
-                extra["LLM_API_BASE"] = endpoint
-                extra["OPENAI_API_BASE"] = endpoint
-                extra["OPENAI_BASE_URL"] = endpoint
-            extra.update(proxy_environment(proxy))
-            return self._settings.laguna_api_key, prefix, extra
-        return self._settings.hf_api_key, "huggingface", {}
+        prefix = (
+            provider.prefix or self._settings.laguna_model_prefix or "litellm_proxy"
+        ).strip()
+        extra: dict[str, str] = {}
+        endpoint = (provider.api_endpoint or self._settings.laguna_api_endpoint).strip()
+        proxy = (provider.proxy_url or self._settings.laguna_proxy_url).strip()
+        if endpoint:
+            extra["LLM_BASE_URL"] = endpoint
+            extra["LLM_API_BASE"] = endpoint
+            extra["OPENAI_API_BASE"] = endpoint
+            extra["OPENAI_BASE_URL"] = endpoint
+        extra.update(proxy_environment(proxy))
+        return self._settings.laguna_api_key, prefix, extra
 
     def _load_task(self, request: TrialRequest) -> tuple[str, float]:
         task_dir = self._task_dir(request)
@@ -350,8 +345,6 @@ def _execution_logs(
 
 
 _LITELLM_PROVIDER_PREFIXES = (
-    "huggingface/",
-    "huggingface_rest/",
     "openai/",
     "anthropic/",
     "openrouter/",
@@ -376,10 +369,6 @@ def _litellm_model(model_id: str, prefix: str = "litellm_proxy") -> str:
     if lowered.startswith(f"{normalized.lower()}/"):
         return raw
     return f"{normalized}/{raw}"
-
-
-def _litellm_huggingface_model(model_id: str) -> str:
-    return _litellm_model(model_id, prefix="huggingface")
 
 
 def _resolve_openhands_command(binary: str) -> list[str] | None:

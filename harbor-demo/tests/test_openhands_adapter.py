@@ -36,7 +36,7 @@ def _request(task_path: str) -> TrialRequest:
         experiment_id="exp",
         task=TaskSpec(id="health-api", name="Health API", path=task_path),
         agent=AgentSpec(id="openhands"),
-        model=ModelSpec(id="model1", hf_id="google/gemma-3-12b-it"),
+        model=ModelSpec(id="model1", laguna_id="google/gemma-3-12b-it"),
         attempt=1,
         provider=ProviderConfig(type="laguna", prefix="litellm_proxy"),
     )
@@ -138,10 +138,6 @@ def test_litellm_model_prefixes_repo_ids() -> None:
         _litellm_model("litellm_proxy/google/gemma-3-12b-it")
         == "litellm_proxy/google/gemma-3-12b-it"
     )
-    assert (
-        _litellm_model("google/gemma-3-12b-it", prefix="huggingface")
-        == "huggingface/google/gemma-3-12b-it"
-    )
 
 
 def test_execute_passes_laguna_runtime_env(tmp_path: Path) -> None:
@@ -178,7 +174,7 @@ def test_runner_reports_missing_headless_cli(monkeypatch, tmp_path: Path) -> Non
     monkeypatch.setattr("src.arms.adapters.agents.openhands_adapter.shutil.which", lambda name: None)
     runner = SubprocessOpenHandsRunner(binary="openhands-missing-for-test")
     outcome = runner.run(
-        model=ModelSpec(id="model1", hf_id="google/gemma-3-12b-it"),
+        model=ModelSpec(id="model1", laguna_id="google/gemma-3-12b-it"),
         workspace=tmp_path,
         instruction="do the task",
         timeout_seconds=5.0,

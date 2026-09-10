@@ -40,7 +40,7 @@ class ModelSpec(BaseModel):
     """A model that can be enabled or tuned without code changes."""
 
     id: str
-    hf_id: str | None = None
+    laguna_id: str | None = None
     enabled: bool = True
     max_new_tokens: int = Field(default=512, ge=1)
     temperature: float = Field(default=0.2, ge=0.0)
@@ -48,7 +48,7 @@ class ModelSpec(BaseModel):
 
     @property
     def inference_id(self) -> str:
-        return self.hf_id or self.id
+        return self.laguna_id or self.id
 
     @model_validator(mode="before")
     @classmethod
@@ -59,7 +59,7 @@ class ModelSpec(BaseModel):
 
 
 class ProviderConfig(BaseModel):
-    type: Literal["laguna", "huggingface"] = "laguna"
+    type: Literal["laguna"] = "laguna"
     timeout_seconds: float = Field(default=120.0, gt=0)
     prefix: str = "litellm_proxy"
     api_endpoint: str = ""
@@ -114,7 +114,6 @@ class AppSettings(BaseSettings):
         populate_by_name=True,
     )
 
-    hf_api_key: str = Field(default="", alias="HF_API_KEY")
     laguna_api_key: str = Field(default="", alias="LAGUNA_API_KEY")
     laguna_api_endpoint: str = Field(default="", alias="LAGUNA_API_ENDPOINT")
     laguna_proxy_url: str = Field(default="", alias="LAGUNA_PROXY_URL")

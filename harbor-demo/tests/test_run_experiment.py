@@ -62,7 +62,7 @@ def _request(model_id: str = "model1") -> TrialRequest:
         experiment_id="exp",
         task=TaskSpec(id="health-api", path="datasets/internal-core/health-api"),
         agent=AgentSpec(id="openhands"),
-        model=ModelSpec(id=model_id, hf_id=f"hf/{model_id}"),
+        model=ModelSpec(id=model_id, laguna_id=model_id),
         attempt=1,
         provider=ProviderConfig(),
     )
