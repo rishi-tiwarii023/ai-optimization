@@ -1,13 +1,13 @@
 # Implementation so far
 
-Harbor + OpenHands evaluation PoC: run a **small coding benchmark** against **multiple Hugging Face models**. The run matrix is YAML-only; adding or removing a model does not require code changes.
+Harbor + OpenHands evaluation PoC: run a **small coding benchmark** against **multiple models via Laguna**. The run matrix is YAML-only; adding or removing a model does not require code changes.
 
 Current demo matrix: **1 task × 1 agent × 5 models × 1 attempt = 5 trials**.
 
 ## What exists
 
 ### Model adapter
-Stateless Hugging Face provider behind a `ModelProvider` interface. `HF_API_KEY` comes from `.env`. Calls return `model_name`, `output`, `token_usage`, `latency`, `error`. Wiring is constructor injection (`create_model_provider`). Inference uses `ModelSpec.hf_id` (falls back to `id`).
+Stateless client for a **local LiteLLM/Laguna** proxy behind a `ModelProvider` interface. `LAGUNA_API_KEY`, `LAGUNA_API_ENDPOINT` (typically `http://127.0.0.1:4000`), and `LAGUNA_PROXY_URL` come from `.env`. Requests to Laguna are sent through that HTTP proxy (localhost is not bypassed) so corporate firewalls do not drop plaintext HTTP responses. Inference uses `ModelSpec.hf_id`. OpenHands gets `LLM_MODEL=litellm_proxy/{hf_id}` and `LLM_BASE_URL` pointing at local Laguna.
 
 ### Experiment matrix and compiler
 `src/experiments/experiment.yaml` is the **matrix only**: `experiment_id`, `tasks`, `agents`, `models`, `attempts`.
@@ -15,7 +15,7 @@ Stateless Hugging Face provider behind a `ModelProvider` interface. `HF_API_KEY`
 IDs are resolved at load time:
 
 - **Task** `health-api` → `datasets/internal-core/health-api/` (`task.toml`, instruction, starter, tests, Docker).
-- **Model** `model1`…`model5` → Hugging Face ids and generation settings in `src/experiments/models.yaml`.
+- **Model** `model1`…`model5` → model ids and generation settings in `src/experiments/models.yaml`.
 
 `ExperimentCompiler` expands **Task × Agent × Model × Attempt** into `TrialRequest` objects. The current YAML produces **5** trials.
 
@@ -65,7 +65,7 @@ Default output: `reports/index.html` (template: `templates/report.html`). The da
 ## Layout
 
 ```
-src/adapters/models/     provider + HuggingFace adapter
+src/adapters/models/     provider + Laguna adapter
 src/adapters/verifiers/  Verifier port + Docker sandbox scorer
 src/adapters/sandbox/    per-trial workspace copy + destroy
 src/arms/adapters/agents/
@@ -150,14 +150,14 @@ Spot-check the matrix in a REPL (same directory):
 python -c "from src.experiments.compiler import ExperimentCompiler; t=ExperimentCompiler().compile(); print(len(t)); print([x.model.inference_id for x in t])"
 ```
 
-Expected: `5` and the five Hugging Face model ids.
+Expected: `5` and the five model ids.
 
 Optional, not automated yet:
 
 - **Task tests** (`datasets/internal-core/health-api/tests/`): fail on the incomplete starter; pass after a correct `/health` implementation.
-- **Hugging Face**: needs `HF_API_KEY` in `.env`. A live generate call is still manual.
+- **Laguna**: local LiteLLM at `LAGUNA_API_ENDPOINT` (e.g. `http://127.0.0.1:4000`). Set `LAGUNA_PROXY_URL` so HTTP goes through the corporate proxy.
 - **Real Docker verifier**: `test_verifier.py` does not start containers. A live compose run needs Docker Desktop.
-- **Live OpenHands**: `test_openhands_adapter.py` does not start the OpenHands CLI. A real run needs the **headless CLI** on `PATH` (or `OPENHANDS_BIN`), a mounted workspace, and `HF_API_KEY`. The `openhands-ai` pip package in the venv is the HTTP agent-server, not that CLI — without the binary every trial errors immediately.
+- **Live OpenHands**: `test_openhands_adapter.py` does not start the OpenHands CLI. A real run needs the **headless CLI** on `PATH` (or `OPENHANDS_BIN`), a mounted workspace, and Laguna env vars. The `openhands-ai` pip package in the venv is the HTTP agent-server, not that CLI — without the binary every trial errors immediately.
 - **Live experiment**: `run_experiment()` defaults would call real OpenHands and Docker; tests inject fakes. After a live run, open `reports/index.html`.
 
 ## Not built yet

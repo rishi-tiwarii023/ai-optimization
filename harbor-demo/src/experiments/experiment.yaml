@@ -1,4 +1,4 @@
-experiment_id: harbor-openhands-hf
+experiment_id: harbor-openhands-laguna
 tasks:
   - health-api
 agents:
@@ -11,5 +11,6 @@ models:
   - model5
 attempts: 1
 provider:
-  type: huggingface
+  type: laguna
   timeout_seconds: 120
+  prefix: litellm_proxy

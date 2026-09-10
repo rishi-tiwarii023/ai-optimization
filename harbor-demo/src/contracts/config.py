@@ -59,8 +59,11 @@ class ModelSpec(BaseModel):
 
 
 class ProviderConfig(BaseModel):
-    type: Literal["huggingface"] = "huggingface"
+    type: Literal["laguna", "huggingface"] = "laguna"
     timeout_seconds: float = Field(default=120.0, gt=0)
+    prefix: str = "litellm_proxy"
+    api_endpoint: str = ""
+    proxy_url: str = ""
 
 
 class ExperimentConfig(BaseModel):
@@ -112,3 +115,7 @@ class AppSettings(BaseSettings):
     )
 
     hf_api_key: str = Field(default="", alias="HF_API_KEY")
+    laguna_api_key: str = Field(default="", alias="LAGUNA_API_KEY")
+    laguna_api_endpoint: str = Field(default="", alias="LAGUNA_API_ENDPOINT")
+    laguna_proxy_url: str = Field(default="", alias="LAGUNA_PROXY_URL")
+    laguna_model_prefix: str = Field(default="litellm_proxy", alias="LAGUNA_MODEL_PREFIX")

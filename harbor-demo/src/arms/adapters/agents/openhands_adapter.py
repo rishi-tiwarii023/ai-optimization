@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from src.adapters.http_proxy import proxy_environment
 from src.contracts.config import AppSettings, ModelSpec
 from src.contracts.sandbox import SandboxSession
 from src.contracts.trials import ResourceUsage, TrajectoryEvent, TrialRequest, TrialResult
@@ -54,6 +55,7 @@ class OpenHandsRunner(Protocol):
         timeout_seconds: float,
         api_key: str,
         extra_env: dict[str, str] | None = None,
+        model_prefix: str = "litellm_proxy",
     ) -> OpenHandsOutcome:
         """Start OpenHands against a mounted workspace and return captured events."""
 
@@ -73,13 +75,15 @@ class SubprocessOpenHandsRunner:
         timeout_seconds: float,
         api_key: str,
         extra_env: dict[str, str] | None = None,
+        model_prefix: str = "litellm_proxy",
     ) -> OpenHandsOutcome:
         env = dict(os.environ)
         env.update(extra_env or {})
-        env["LLM_MODEL"] = _litellm_huggingface_model(model.inference_id)
+        env["LLM_MODEL"] = _litellm_model(model.inference_id, prefix=model_prefix)
         env["LLM_API_KEY"] = api_key
-        env["HF_TOKEN"] = api_key
-        env["HUGGINGFACE_API_KEY"] = api_key
+        if model_prefix.startswith("huggingface"):
+            env["HF_TOKEN"] = api_key
+            env["HUGGINGFACE_API_KEY"] = api_key
         command = _resolve_openhands_command(self._binary)
         if command is None:
             return OpenHandsOutcome(error=_missing_openhands_message(self._binary))
@@ -152,12 +156,15 @@ class OpenHandsAdapter:
             workspace = sandbox.mount()
             instruction, timeout_seconds = self._load_task(request)
             before = _snapshot(workspace)
+            api_key, model_prefix, extra_env = self._llm_runtime(request)
             outcome = self._runner.run(
                 model=request.model,
                 workspace=workspace,
                 instruction=instruction,
                 timeout_seconds=timeout_seconds,
-                api_key=self._settings.hf_api_key,
+                api_key=api_key,
+                extra_env=extra_env,
+                model_prefix=model_prefix,
             )
             after = _snapshot(workspace)
         except Exception as exc:  # noqa: BLE001
@@ -212,6 +219,24 @@ class OpenHandsAdapter:
             resource_usage=usage,
             error_details=None,
         )
+
+    def _llm_runtime(self, request: TrialRequest) -> tuple[str, str, dict[str, str]]:
+        provider = request.provider
+        if provider.type == "laguna":
+            prefix = (
+                provider.prefix or self._settings.laguna_model_prefix or "litellm_proxy"
+            ).strip()
+            extra: dict[str, str] = {}
+            endpoint = (provider.api_endpoint or self._settings.laguna_api_endpoint).strip()
+            proxy = (provider.proxy_url or self._settings.laguna_proxy_url).strip()
+            if endpoint:
+                extra["LLM_BASE_URL"] = endpoint
+                extra["LLM_API_BASE"] = endpoint
+                extra["OPENAI_API_BASE"] = endpoint
+                extra["OPENAI_BASE_URL"] = endpoint
+            extra.update(proxy_environment(proxy))
+            return self._settings.laguna_api_key, prefix, extra
+        return self._settings.hf_api_key, "huggingface", {}
 
     def _load_task(self, request: TrialRequest) -> tuple[str, float]:
         task_dir = self._task_dir(request)
@@ -332,19 +357,29 @@ _LITELLM_PROVIDER_PREFIXES = (
     "openrouter/",
     "together_ai/",
     "groq/",
+    "litellm_proxy/",
+    "litellm/",
+    "laguna/",
 )
 
 
-def _litellm_huggingface_model(model_id: str) -> str:
-    """LiteLLM requires a provider prefix; HF repo ids like google/gemma-3-12b-it do not have one."""
+def _litellm_model(model_id: str, prefix: str = "litellm_proxy") -> str:
+    """OpenHands talks to local LiteLLM/Laguna as litellm_proxy/<model>."""
 
     raw = model_id.strip()
     if not raw:
         return raw
     lowered = raw.lower()
-    if any(lowered.startswith(prefix) for prefix in _LITELLM_PROVIDER_PREFIXES):
+    if any(lowered.startswith(known) for known in _LITELLM_PROVIDER_PREFIXES):
         return raw
-    return f"huggingface/{raw}"
+    normalized = prefix.strip().rstrip("/") or "litellm_proxy"
+    if lowered.startswith(f"{normalized.lower()}/"):
+        return raw
+    return f"{normalized}/{raw}"
+
+
+def _litellm_huggingface_model(model_id: str) -> str:
+    return _litellm_model(model_id, prefix="huggingface")
 
 
 def _resolve_openhands_command(binary: str) -> list[str] | None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.arms.adapters.agents.openhands_adapter import OpenHandsAdapter, OpenHandsOutcome
-from src.contracts.config import AgentSpec, ModelSpec, ProviderConfig, TaskSpec
+from src.contracts.config import AgentSpec, AppSettings, ModelSpec, ProviderConfig, TaskSpec
 from src.contracts.trials import TrialRequest
 
 
@@ -38,7 +38,7 @@ def _request(task_path: str) -> TrialRequest:
         agent=AgentSpec(id="openhands"),
         model=ModelSpec(id="model1", hf_id="google/gemma-3-12b-it"),
         attempt=1,
-        provider=ProviderConfig(),
+        provider=ProviderConfig(type="laguna", prefix="litellm_proxy"),
     )
 
 
@@ -130,17 +130,45 @@ def test_execute_timeout_status(tmp_path: Path) -> None:
     assert result.error_details is not None
 
 
-def test_litellm_huggingface_model_prefixes_hf_repo_ids() -> None:
-    from src.arms.adapters.agents.openhands_adapter import _litellm_huggingface_model
+def test_litellm_model_prefixes_repo_ids() -> None:
+    from src.arms.adapters.agents.openhands_adapter import _litellm_model
 
+    assert _litellm_model("google/gemma-3-12b-it") == "litellm_proxy/google/gemma-3-12b-it"
     assert (
-        _litellm_huggingface_model("google/gemma-3-12b-it")
-        == "huggingface/google/gemma-3-12b-it"
+        _litellm_model("litellm_proxy/google/gemma-3-12b-it")
+        == "litellm_proxy/google/gemma-3-12b-it"
     )
     assert (
-        _litellm_huggingface_model("huggingface/google/gemma-3-12b-it")
+        _litellm_model("google/gemma-3-12b-it", prefix="huggingface")
         == "huggingface/google/gemma-3-12b-it"
     )
+
+
+def test_execute_passes_laguna_runtime_env(tmp_path: Path) -> None:
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+    (task_dir / "task.toml").write_text(
+        'task_id = "health-api"\ndescription = "do the task"\n',
+        encoding="utf-8",
+    )
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    runner = FakeRunner(OpenHandsOutcome())
+    settings = AppSettings.model_validate(
+        {
+            "LAGUNA_API_KEY": "laguna-secret",
+            "LAGUNA_API_ENDPOINT": "http://127.0.0.1:4000",
+            "LAGUNA_PROXY_URL": "http://127.0.0.1:3128",
+        }
+    )
+    adapter = OpenHandsAdapter(runner=runner, settings=settings, repo_root=tmp_path)
+    adapter.execute(_request(str(task_dir)), FakeSandbox(workspace))
+    call = runner.calls[0]
+    assert call["api_key"] == "laguna-secret"
+    assert call["model_prefix"] == "litellm_proxy"
+    assert call["extra_env"]["LLM_BASE_URL"] == "http://127.0.0.1:4000"
+    assert call["extra_env"]["HTTPS_PROXY"] == "http://127.0.0.1:3128"
+    assert call["extra_env"]["NO_PROXY"] == ""
 
 
 def test_runner_reports_missing_headless_cli(monkeypatch, tmp_path: Path) -> None:
