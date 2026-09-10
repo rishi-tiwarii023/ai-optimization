@@ -96,6 +96,8 @@ class SubprocessOpenHandsRunner:
                 args,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 env=env,
                 timeout=timeout_seconds,
                 check=False,
@@ -325,7 +327,7 @@ def _resolve_openhands_command(binary: str) -> list[str] | None:
         return None
     as_path = Path(configured).expanduser()
     if as_path.is_file():
-        return [str(as_path)]
+        return [str(as_path.resolve())]
     found = shutil.which(configured)
     if found:
         return [found]
