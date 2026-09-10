@@ -76,7 +76,7 @@ class SubprocessOpenHandsRunner:
     ) -> OpenHandsOutcome:
         env = dict(os.environ)
         env.update(extra_env or {})
-        env["LLM_MODEL"] = model.inference_id
+        env["LLM_MODEL"] = _litellm_huggingface_model(model.inference_id)
         env["LLM_API_KEY"] = api_key
         env["HF_TOKEN"] = api_key
         env["HUGGINGFACE_API_KEY"] = api_key
@@ -322,6 +322,29 @@ def _execution_logs(
     )
     body = outcome.logs.strip()
     return f"{header}\n{body}".strip()
+
+
+_LITELLM_PROVIDER_PREFIXES = (
+    "huggingface/",
+    "huggingface_rest/",
+    "openai/",
+    "anthropic/",
+    "openrouter/",
+    "together_ai/",
+    "groq/",
+)
+
+
+def _litellm_huggingface_model(model_id: str) -> str:
+    """LiteLLM requires a provider prefix; HF repo ids like google/gemma-3-12b-it do not have one."""
+
+    raw = model_id.strip()
+    if not raw:
+        return raw
+    lowered = raw.lower()
+    if any(lowered.startswith(prefix) for prefix in _LITELLM_PROVIDER_PREFIXES):
+        return raw
+    return f"huggingface/{raw}"
 
 
 def _resolve_openhands_command(binary: str) -> list[str] | None:

@@ -130,6 +130,19 @@ def test_execute_timeout_status(tmp_path: Path) -> None:
     assert result.error_details is not None
 
 
+def test_litellm_huggingface_model_prefixes_hf_repo_ids() -> None:
+    from src.arms.adapters.agents.openhands_adapter import _litellm_huggingface_model
+
+    assert (
+        _litellm_huggingface_model("google/gemma-3-12b-it")
+        == "huggingface/google/gemma-3-12b-it"
+    )
+    assert (
+        _litellm_huggingface_model("huggingface/google/gemma-3-12b-it")
+        == "huggingface/google/gemma-3-12b-it"
+    )
+
+
 def test_runner_reports_missing_headless_cli(monkeypatch, tmp_path: Path) -> None:
     from src.arms.adapters.agents.openhands_adapter import SubprocessOpenHandsRunner
 
