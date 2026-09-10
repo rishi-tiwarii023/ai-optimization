@@ -86,8 +86,8 @@ class SubprocessOpenHandsRunner:
         args = [
             *command,
             "--headless",
-            "--directory",
-            str(workspace),
+            "--json",
+            "--override-with-envs",
             "--task",
             instruction,
         ]
@@ -121,7 +121,10 @@ class SubprocessOpenHandsRunner:
         events = _parse_event_lines(completed.stdout)
         error = None
         if completed.returncode != 0:
+            hint = _cli_error_hint(completed.stderr, completed.stdout)
             error = f"OpenHands exited with code {completed.returncode}"
+            if hint:
+                error = f"{error}: {hint}"
         return OpenHandsOutcome(events=events, logs=logs, error=error)
 
 
@@ -343,6 +346,13 @@ def _missing_openhands_message(binary: str) -> str:
         "This venv's openhands-ai package is the HTTP agent-server, not the "
         "headless CLI. Install the OpenHands CLI, put it on PATH, or set OPENHANDS_BIN."
     )
+
+
+def _cli_error_hint(stderr: str | None, stdout: str | None, *, limit: int = 400) -> str:
+    text = (stderr or stdout or "").strip().replace("\n", " ")
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
 
 
 def _join_logs(stdout: str | None, stderr: str | None) -> str:
