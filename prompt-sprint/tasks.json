@@ -1,1 +1,42 @@
-[]
+[
+  {
+    "task_id": "task_001",
+    "prompt": "Explain dependency inversion with a concise Python example."
+  },
+  {
+    "task_id": "task_002",
+    "prompt": "Create a minimal FastAPI health endpoint."
+  },
+  {
+    "task_id": "task_003",
+    "prompt": "Define polymorphism in one paragraph."
+  },
+  {
+    "task_id": "task_004",
+    "prompt": "Define a REST API in two sentences."
+  },
+  {
+    "task_id": "task_005",
+    "prompt": "Write a Python function that sorts a list of integers in ascending order."
+  },
+  {
+    "task_id": "task_006",
+    "prompt": "Write a Python function that sorts a list of strings alphabetically."
+  },
+  {
+    "task_id": "task_007",
+    "prompt": "Define unit testing in one sentence."
+  },
+  {
+    "task_id": "task_008",
+    "prompt": "Write Python code that reverses a string without using slicing."
+  },
+  {
+    "task_id": "task_009",
+    "prompt": "Define idempotency for HTTP methods with one example."
+  },
+  {
+    "task_id": "task_010",
+    "prompt": "Write a Python function that returns the maximum value in a list."
+  }
+]

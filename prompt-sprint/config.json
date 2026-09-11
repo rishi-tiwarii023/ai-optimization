@@ -1,1 +1,10 @@
-{}
+{
+  "provider": "openrouter",
+  "model": "openrouter/anthropic/claude-sonnet-4",
+  "temperature": 0,
+  "max_tokens": 2000,
+  "timeout_seconds": 120,
+  "continue_on_error": true,
+  "overwrite_existing": false,
+  "extra_params": {}
+}
