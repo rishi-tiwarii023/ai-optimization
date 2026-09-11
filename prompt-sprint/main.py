@@ -7,8 +7,6 @@ import tempfile
 import time
 import uuid
 from datetime import datetime, timezone
-
-import litellm
 from dotenv import load_dotenv
 
 PROVIDERS = {
@@ -25,15 +23,18 @@ def fail(message):
     sys.exit(1)
 
 
-def load_config(path="config.json"):
+def load_json(path):
     try:
         with open(path, encoding="utf-8") as f:
-            config = json.load(f)
+            return json.load(f)
     except FileNotFoundError:
-        fail(f"Missing configuration file: {path}")
+        fail(f"Missing file: {path}")
     except json.JSONDecodeError as exc:
         fail(f"Invalid JSON in {path}: {exc}")
 
+
+def load_config(path="config.json"):
+    config = load_json(path)
     if not isinstance(config, dict):
         fail(f"{path} must contain a JSON object.")
     return config
@@ -64,40 +65,41 @@ def require_bool(config, key):
     return value
 
 
+def require_prefixed_model(model, prefix, provider_name):
+    if not model.startswith(prefix):
+        fail(
+            f'Model {model!r} does not start with expected prefix {prefix!r} '
+            f'for provider "{provider_name}".'
+        )
+    return model
+
+
 def validate_config(config, enforce_available_models=True):
     provider_name = require_string(config, "provider")
     if provider_name not in PROVIDERS:
         supported = ", ".join(PROVIDERS)
         fail(f'Unknown provider {provider_name!r}. Supported providers: {supported}.')
 
-    model = require_string(config, "model")
-    prefix = PROVIDERS[provider_name]["prefix"]
-    if not model.startswith(prefix):
-        fail(
-            f'Model {model!r} does not start with expected prefix {prefix!r} '
-            f'for provider "{provider_name}".'
-        )
+    spec = PROVIDERS[provider_name]
+    model = require_prefixed_model(require_string(config, "model"), spec["prefix"], provider_name)
 
     available_models = config.get("available_models")
     if available_models is not None and enforce_available_models:
         if not isinstance(available_models, list) or not available_models:
             fail('Invalid "available_models": expected a non-empty JSON array of model ids.')
+        cleaned = []
         for index, candidate in enumerate(available_models, start=1):
             if not isinstance(candidate, str) or not candidate.strip():
                 fail(f'Invalid "available_models" item at index {index}: expected a non-empty string.')
-            candidate = candidate.strip()
-            if not candidate.startswith(prefix):
-                fail(
-                    f'Model {candidate!r} in available_models does not start with expected '
-                    f'prefix {prefix!r} for provider "{provider_name}".'
-                )
-            available_models[index - 1] = candidate
-        if model not in available_models:
+            cleaned.append(
+                require_prefixed_model(candidate.strip(), spec["prefix"], provider_name)
+            )
+        if model not in cleaned:
             fail(
                 f'Model {model!r} is not in available_models. '
-                "Set \"model\" to one of the listed OpenRouter ids."
+                'Set "model" to one of the listed ids.'
             )
-        config["available_models"] = available_models
+        config["available_models"] = cleaned
 
     require_number(config, "temperature")
     require_number(config, "max_tokens", integer=True)
@@ -198,6 +200,8 @@ def empty_metrics(latency_ms):
 
 
 def run_task(task, config, call_kwargs):
+    import litellm
+
     started_at = utc_now()
     started = time.perf_counter()
     try:
@@ -290,14 +294,7 @@ TASK_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def load_tasks(path="tasks.json"):
-    try:
-        with open(path, encoding="utf-8") as f:
-            tasks = json.load(f)
-    except FileNotFoundError:
-        fail(f"Missing tasks file: {path}")
-    except json.JSONDecodeError as exc:
-        fail(f"Invalid JSON in {path}: {exc}")
-
+    tasks = load_json(path)
     if not isinstance(tasks, list):
         fail(f"{path} must contain a JSON array of tasks.")
     if not tasks:
