@@ -1,0 +1,11 @@
+In the harbor-demo project, add a new benchmark unit without changing Python application code.
+
+Follow the existing layout under datasets/internal-core/:
+1. Create a directory named after the unit
+2. Add task.toml (description, timeout, optional name)
+3. Add instruction.md with the full agent instructions
+4. Add starter/ with the skeleton the agent starts from
+5. Add tests/ with the acceptance checks the verifier will run
+6. Append the unit id to the tasks list in src/experiments/experiment.yaml
+
+Discovery is YAML + directory only.

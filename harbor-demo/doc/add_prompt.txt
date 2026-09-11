@@ -1,0 +1,7 @@
+In the harbor-demo project, make instruction text configurable from experiment YAML so the same dataset can be run with different wording.
+
+1. On TaskSpec in src/contracts/config.py, add an optional string field for the instruction override. If it is unset, keep today's behavior (description + instruction.md).
+
+2. In OpenHandsAdapter._load_task(), if that field is set, use it as the instruction (support .format with values from the task/metadata). Otherwise keep concatenating description and instruction.md.
+
+3. After that, new wording is YAML-only: extra entries under tasks can reuse the same path and supply a different instruction string. Do not add more Python for each wording variant.

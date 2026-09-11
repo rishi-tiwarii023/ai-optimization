@@ -1,0 +1,14 @@
+In the harbor-demo project, add a new model backend as a plugin. Do not rewrite the registry, factory, adapter, or smoke test unless a one-line registration import is required.
+
+Create a new module under src/adapters/models/ (or src/adapters/models/providers/) that:
+- Uses @register("<type-name>") from src.adapters.models.registry
+- Subclasses ModelProvider
+- Implements from_config(cls, provider_config, env) reading credentials and URLs from env and provider_config (including extra)
+- Implements get_agent_env(self, model) returning the env vars the agent process needs
+- Implements generate(self, prompt, model) -> ModelResponse using urllib only
+
+Then:
+1. Import the new module from _load_providers() in src/adapters/models/factory.py so the decorator runs
+2. Put secrets in .env
+3. Set provider.type in src/experiments/experiment.yaml to the registered name
+4. List models in src/experiments/models.yaml using model_id
