@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -40,15 +40,16 @@ class ModelSpec(BaseModel):
     """A model that can be enabled or tuned without code changes."""
 
     id: str
-    laguna_id: str | None = None
+    model_id: str | None = None
     enabled: bool = True
     max_new_tokens: int = Field(default=512, ge=1)
     temperature: float = Field(default=0.2, ge=0.0)
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def inference_id(self) -> str:
-        return self.laguna_id or self.id
+        return self.model_id or self.id
 
     @model_validator(mode="before")
     @classmethod
@@ -59,11 +60,12 @@ class ModelSpec(BaseModel):
 
 
 class ProviderConfig(BaseModel):
-    type: Literal["laguna"] = "laguna"
+    type: str = "laguna"
     timeout_seconds: float = Field(default=120.0, gt=0)
     prefix: str = "litellm_proxy"
     api_endpoint: str = ""
     proxy_url: str = ""
+    extra: dict[str, Any] = Field(default_factory=dict)
 
 
 class ExperimentConfig(BaseModel):
@@ -114,7 +116,4 @@ class AppSettings(BaseSettings):
         populate_by_name=True,
     )
 
-    laguna_api_key: str = Field(default="", alias="LAGUNA_API_KEY")
-    laguna_api_endpoint: str = Field(default="", alias="LAGUNA_API_ENDPOINT")
-    laguna_proxy_url: str = Field(default="", alias="LAGUNA_PROXY_URL")
-    laguna_model_prefix: str = Field(default="litellm_proxy", alias="LAGUNA_MODEL_PREFIX")
+    # Provider-specific settings are read directly by each ModelProvider via os.getenv()

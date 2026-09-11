@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from src.adapters.http_proxy import proxy_environment
-from src.contracts.config import AppSettings, ModelSpec
+from src.adapters.models.factory import create_model_provider
+from src.contracts.config import ModelSpec
 from src.contracts.sandbox import SandboxSession
 from src.contracts.trials import ResourceUsage, TrajectoryEvent, TrialRequest, TrialResult
 
@@ -136,11 +136,9 @@ class OpenHandsAdapter:
         self,
         *,
         runner: OpenHandsRunner | None = None,
-        settings: AppSettings | None = None,
         repo_root: Path | None = None,
     ) -> None:
         self._runner = runner or SubprocessOpenHandsRunner()
-        self._settings = settings or AppSettings()
         self._repo_root = repo_root or Path(__file__).resolve().parents[4]
 
     def execute(self, request: TrialRequest, sandbox: SandboxSession) -> TrialResult:
@@ -218,20 +216,11 @@ class OpenHandsAdapter:
         )
 
     def _llm_runtime(self, request: TrialRequest) -> tuple[str, str, dict[str, str]]:
-        provider = request.provider
-        prefix = (
-            provider.prefix or self._settings.laguna_model_prefix or "litellm_proxy"
-        ).strip()
-        extra: dict[str, str] = {}
-        endpoint = (provider.api_endpoint or self._settings.laguna_api_endpoint).strip()
-        proxy = (provider.proxy_url or self._settings.laguna_proxy_url).strip()
-        if endpoint:
-            extra["LLM_BASE_URL"] = endpoint
-            extra["LLM_API_BASE"] = endpoint
-            extra["OPENAI_API_BASE"] = endpoint
-            extra["OPENAI_BASE_URL"] = endpoint
-        extra.update(proxy_environment(proxy))
-        return self._settings.laguna_api_key, prefix, extra
+        model_provider = create_model_provider(request.provider)
+        prefix = (request.provider.prefix or "litellm_proxy").strip()
+        extra = model_provider.get_agent_env(request.model)
+        api_key = extra.get("LLM_API_KEY", "")
+        return api_key, prefix, extra
 
     def _load_task(self, request: TrialRequest) -> tuple[str, float]:
         task_dir = self._task_dir(request)

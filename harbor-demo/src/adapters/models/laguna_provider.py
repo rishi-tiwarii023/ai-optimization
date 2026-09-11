@@ -4,14 +4,19 @@ import json
 import time
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.adapters.http_proxy import build_forced_proxy_opener
 from src.adapters.models.provider import ModelProvider
+from src.adapters.models.registry import register
 from src.contracts.config import ModelSpec
 from src.contracts.responses import ModelResponse, TokenUsage
 
+if TYPE_CHECKING:
+    from src.contracts.config import ProviderConfig
 
+
+@register("laguna")
 class LagunaProvider(ModelProvider):
     """Stateless client for a local LiteLLM/Laguna OpenAI-compatible proxy.
 
@@ -24,13 +29,47 @@ class LagunaProvider(ModelProvider):
         api_endpoint: str,
         proxy_url: str = "",
         timeout_seconds: float = 120.0,
+        prefix: str = "litellm_proxy",
     ) -> None:
-        if not api_endpoint:
-            raise ValueError("LAGUNA_API_ENDPOINT is required to construct LagunaProvider.")
         self._api_key = api_key
         self._api_endpoint = api_endpoint.rstrip("/")
         self._proxy_url = proxy_url.strip()
         self._timeout_seconds = timeout_seconds
+        self._prefix = (prefix or "litellm_proxy").strip().rstrip("/") or "litellm_proxy"
+
+    @classmethod
+    def from_config(cls, provider_config: "ProviderConfig", env: dict[str, str]) -> "LagunaProvider":
+        api_key = provider_config.extra.get("api_key") or env.get("LAGUNA_API_KEY", "")
+        api_endpoint = (
+            provider_config.api_endpoint
+            or env.get("LAGUNA_API_ENDPOINT", "")
+        )
+        proxy_url = (
+            provider_config.proxy_url
+            or env.get("LAGUNA_PROXY_URL", "")
+        )
+        return cls(
+            api_key=api_key,
+            api_endpoint=api_endpoint,
+            proxy_url=proxy_url,
+            timeout_seconds=provider_config.timeout_seconds,
+            prefix=provider_config.prefix,
+        )
+
+    def get_agent_env(self, model: ModelSpec) -> dict[str, str]:
+        """Return env vars OpenHands needs to call this Laguna/LiteLLM endpoint."""
+        from src.adapters.http_proxy import proxy_environment
+
+        env: dict[str, str] = {}
+        if self._api_endpoint:
+            env["LLM_BASE_URL"] = self._api_endpoint
+            env["LLM_API_BASE"] = self._api_endpoint
+            env["OPENAI_API_BASE"] = self._api_endpoint
+            env["OPENAI_BASE_URL"] = self._api_endpoint
+        if self._api_key:
+            env["LLM_API_KEY"] = self._api_key
+        env.update(proxy_environment(self._proxy_url))
+        return env
 
     def generate(self, prompt: str, model: ModelSpec) -> ModelResponse:
         started = time.perf_counter()
@@ -53,6 +92,8 @@ class LagunaProvider(ModelProvider):
             )
 
     def _complete(self, prompt: str, model: ModelSpec) -> tuple[str, TokenUsage | None]:
+        if not self._api_endpoint:
+            raise ValueError("LAGUNA_API_ENDPOINT is required to generate with LagunaProvider.")
         payload: dict[str, Any] = {
             "model": model.inference_id,
             "messages": [{"role": "user", "content": prompt}],

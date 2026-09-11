@@ -1,68 +1,46 @@
-"""Hit every model in models.yaml through local LiteLLM/Laguna via the HTTP proxy."""
+"""Hit every model in models.yaml through the configured provider."""
 
 from pathlib import Path
 
-from dotenv import load_dotenv
-import json
-import os
-import urllib.error
-import urllib.request
 import yaml
+from dotenv import load_dotenv
 
-from src.adapters.http_proxy import build_forced_proxy_opener
+from src.adapters.models.factory import create_model_provider
+from src.contracts.config import ExperimentConfig
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
 
+EXPERIMENT_YAML = ROOT / "src" / "experiments" / "experiment.yaml"
 MODELS_YAML = ROOT / "src" / "experiments" / "models.yaml"
 
 
-def main() -> None:
-    api_key = os.getenv("LAGUNA_API_KEY") or ""
-    endpoint = (os.getenv("LAGUNA_API_ENDPOINT") or "").rstrip("/")
-    proxy = (os.getenv("LAGUNA_PROXY_URL") or "").strip()
-    if not endpoint:
-        raise SystemExit("LAGUNA_API_ENDPOINT missing from .env")
+def _load_experiment_config() -> ExperimentConfig:
+    experiment_data = yaml.safe_load(EXPERIMENT_YAML.read_text())
+    models_by_key = yaml.safe_load(MODELS_YAML.read_text())["models"]
+    experiment_data["models"] = [
+        {"id": key, **models_by_key[key]} for key in experiment_data["models"]
+    ]
+    return ExperimentConfig(**experiment_data)
 
-    models = yaml.safe_load(MODELS_YAML.read_text())["models"]
-    opener = build_forced_proxy_opener(proxy)
+
+def main() -> None:
+    experiment_config = _load_experiment_config()
+    provider = create_model_provider(experiment_config)
     failed: list[str] = []
 
-    for key, spec in models.items():
-        model_id = spec["laguna_id"]
-        print(f"Calling {key} ({model_id})...", flush=True)
-        payload = {
-            "model": model_id,
-            "messages": [{"role": "user", "content": "Reply with the single word: pong"}],
-            "max_tokens": min(int(spec.get("max_new_tokens", 32)), 32),
-            "temperature": spec.get("temperature", 0.2),
-        }
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        request = urllib.request.Request(
-            f"{endpoint}/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-        try:
-            with opener.open(request, timeout=120.0) as response:
-                body = json.loads(response.read().decode("utf-8"))
-            choices = body.get("choices") or []
-            message = choices[0].get("message") if choices else {}
-            text = (message or {}).get("content") or ""
-            if not text.strip():
-                print("FAIL: empty response")
-                failed.append(key)
-                continue
-            print("OK:", text.strip()[:200])
-        except urllib.error.HTTPError as exc:
-            print(f"FAIL: HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')}")
-            failed.append(key)
-        except Exception as exc:
-            print(f"FAIL: {exc}")
-            failed.append(key)
+    for model in experiment_config.enabled_models():
+        print(f"Calling {model.id} ({model.inference_id})...", flush=True)
+        response = provider.generate("Reply with the single word: pong", model)
+        if response.error is not None:
+            print(f"FAIL: {response.error}")
+            failed.append(model.id)
+            continue
+        if not (response.output or "").strip():
+            print("FAIL: empty response")
+            failed.append(model.id)
+            continue
+        print("OK:", response.output.strip()[:200])
 
     if failed:
         raise SystemExit("Failed: " + ", ".join(failed))

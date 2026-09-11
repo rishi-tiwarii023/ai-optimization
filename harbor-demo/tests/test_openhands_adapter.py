@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.arms.adapters.agents.openhands_adapter import OpenHandsAdapter, OpenHandsOutcome
-from src.contracts.config import AgentSpec, AppSettings, ModelSpec, ProviderConfig, TaskSpec
+from src.contracts.config import AgentSpec, ModelSpec, ProviderConfig, TaskSpec
 from src.contracts.trials import TrialRequest
 
 
@@ -36,7 +36,7 @@ def _request(task_path: str) -> TrialRequest:
         experiment_id="exp",
         task=TaskSpec(id="health-api", name="Health API", path=task_path),
         agent=AgentSpec(id="openhands"),
-        model=ModelSpec(id="model1", laguna_id="google/gemma-3-12b-it"),
+        model=ModelSpec(id="model1", model_id="google/gemma-3-12b-it"),
         attempt=1,
         provider=ProviderConfig(type="laguna", prefix="litellm_proxy"),
     )
@@ -140,7 +140,7 @@ def test_litellm_model_prefixes_repo_ids() -> None:
     )
 
 
-def test_execute_passes_laguna_runtime_env(tmp_path: Path) -> None:
+def test_execute_passes_laguna_runtime_env(monkeypatch, tmp_path: Path) -> None:
     task_dir = tmp_path / "task"
     task_dir.mkdir()
     (task_dir / "task.toml").write_text(
@@ -150,14 +150,10 @@ def test_execute_passes_laguna_runtime_env(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     workspace.mkdir()
     runner = FakeRunner(OpenHandsOutcome())
-    settings = AppSettings.model_validate(
-        {
-            "LAGUNA_API_KEY": "laguna-secret",
-            "LAGUNA_API_ENDPOINT": "http://127.0.0.1:4000",
-            "LAGUNA_PROXY_URL": "http://127.0.0.1:3128",
-        }
-    )
-    adapter = OpenHandsAdapter(runner=runner, settings=settings, repo_root=tmp_path)
+    monkeypatch.setenv("LAGUNA_API_KEY", "laguna-secret")
+    monkeypatch.setenv("LAGUNA_API_ENDPOINT", "http://127.0.0.1:4000")
+    monkeypatch.setenv("LAGUNA_PROXY_URL", "http://127.0.0.1:3128")
+    adapter = OpenHandsAdapter(runner=runner, repo_root=tmp_path)
     adapter.execute(_request(str(task_dir)), FakeSandbox(workspace))
     call = runner.calls[0]
     assert call["api_key"] == "laguna-secret"
@@ -174,7 +170,7 @@ def test_runner_reports_missing_headless_cli(monkeypatch, tmp_path: Path) -> Non
     monkeypatch.setattr("src.arms.adapters.agents.openhands_adapter.shutil.which", lambda name: None)
     runner = SubprocessOpenHandsRunner(binary="openhands-missing-for-test")
     outcome = runner.run(
-        model=ModelSpec(id="model1", laguna_id="google/gemma-3-12b-it"),
+        model=ModelSpec(id="model1", model_id="google/gemma-3-12b-it"),
         workspace=tmp_path,
         instruction="do the task",
         timeout_seconds=5.0,

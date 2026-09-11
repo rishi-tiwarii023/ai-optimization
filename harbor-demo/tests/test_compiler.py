@@ -22,7 +22,7 @@ def test_load_experiment_from_yaml() -> None:
     task = config.enabled_tasks()[0]
     assert task.path == "datasets/internal-core/health-api"
     assert task.name == "Health API"
-    assert [model.laguna_id for model in config.enabled_models()] == [
+    assert [model.model_id for model in config.enabled_models()] == [
         "google/gemma-3-12b-it",
         "deepseek-ai/DeepSeek-V3",
         "meta-llama/Llama-3.3-70B-Instruct",
@@ -45,7 +45,7 @@ def test_compiler_expands_task_agent_model_attempt() -> None:
     assert all(trial.task.id == "health-api" for trial in trials)
     assert all(trial.agent.id == "openhands" for trial in trials)
     assert all(trial.attempt == 1 for trial in trials)
-    assert all(trial.model.laguna_id for trial in trials)
+    assert all(trial.model.model_id for trial in trials)
     assert all(trial.task.path == "datasets/internal-core/health-api" for trial in trials)
     assert {trial.trial_id for trial in trials} == {
         "harbor-openhands-laguna::health-api::openhands::model1::1",
