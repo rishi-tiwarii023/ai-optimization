@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from src.adapters.models.factory import create_model_provider
+from src.arms.adapters.agents.openhands_jose import ensure_joserfc_in_openhands
 from src.contracts.config import ModelSpec
 from src.contracts.sandbox import SandboxSession
 from src.contracts.trials import ResourceUsage, TrajectoryEvent, TrialRequest, TrialResult
@@ -84,6 +85,9 @@ class SubprocessOpenHandsRunner:
         command = _resolve_openhands_command(self._binary)
         if command is None:
             return OpenHandsOutcome(error=_missing_openhands_message(self._binary))
+        jose_error = ensure_joserfc_in_openhands(Path(command[0]))
+        if jose_error:
+            return OpenHandsOutcome(error=jose_error)
         args = [
             *command,
             "--headless",

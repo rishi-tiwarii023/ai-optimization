@@ -40,6 +40,37 @@ graph TD
 5. `OpenHandsAdapter._llm_runtime()` never hardcodes Laguna; it asks the provider for env vars.
 6. `model_test.py` uses the same factory, so changing YAML is enough to hit a different backend.
 
+## OpenHands trial run
+
+One trial is: experiment → adapter → runner → (JWT library fix) → CLI.
+
+```mermaid
+sequenceDiagram
+    participant Trial as run_trial
+    participant Adapter as OpenHandsAdapter.execute
+    participant Runner as SubprocessOpenHandsRunner.run
+    participant Jose as ensure_joserfc_in_openhands
+    participant CLI as openhands CLI
+
+    Trial->>Adapter: execute(request, sandbox)
+    Adapter->>Adapter: mount workspace, load instruction
+    Adapter->>Adapter: create_model_provider, get_agent_env
+    Adapter->>Runner: run(model, workspace, instruction, env)
+    Runner->>Runner: resolve OPENHANDS_BIN
+    Runner->>Jose: patch SDK if it still uses authlib.jose
+    Jose-->>Runner: None or error string
+    Runner->>CLI: subprocess openhands --headless --task
+    CLI-->>Runner: stdout, stderr, exit code
+    Runner-->>Adapter: OpenHandsOutcome
+    Adapter-->>Trial: TrialResult plus patch and logs
+```
+
+1. `OpenHandsAdapter.execute` mounts the sandbox, reads `task.toml` and `instruction.md`, snapshots files, then asks the model provider for env vars (`LLM_BASE_URL`, `LLM_API_KEY`, proxy).
+2. `SubprocessOpenHandsRunner.run` finds the `openhands` binary.
+3. Before launch, `ensure_joserfc_in_openhands` rewrites SDK 1.21 JWT code from `authlib.jose` to `joserfc` (and installs `joserfc` in that uv-tool env). If the import is already gone, it does nothing.
+4. The runner starts `openhands --headless --json --override-with-envs --task <instruction>` in the workspace.
+5. The adapter diffs the workspace, maps events to a trajectory, and returns `success` / `error` / `timeout`. Scoring happens later in `run_trial`.
+
 ## Adding pieces without rewriting the core
 
 | Goal | What you add | Prompt file |
