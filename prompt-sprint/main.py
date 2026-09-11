@@ -2,6 +2,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 
@@ -224,6 +225,37 @@ def run_task(task, config, call_kwargs):
         }
 
 
+RESPONSES_DIR = "responses"
+
+
+def ensure_responses_dir(path=RESPONSES_DIR):
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def result_path(task_id, responses_dir=RESPONSES_DIR):
+    return os.path.join(responses_dir, f"{task_id}.json")
+
+
+def result_exists(task_id, responses_dir=RESPONSES_DIR):
+    return os.path.exists(result_path(task_id, responses_dir))
+
+
+def save_result(result, responses_dir=RESPONSES_DIR):
+    path = result_path(result["task_id"], responses_dir)
+    fd, tmp_path = tempfile.mkstemp(
+        dir=responses_dir, prefix=f'.{result["task_id"]}.', suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2)
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+
+
 TASK_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -275,19 +307,36 @@ def load_tasks(path="tasks.json"):
 def main():
     load_dotenv()
     config = validate_config(load_config())
-    tasks = load_tasks()
     call_kwargs = build_call_kwargs(config)
+    tasks = load_tasks()
+    responses_dir = ensure_responses_dir()
     print(f'Provider: {config["provider"]} | Model: {config["model"]}')
-    for task in tasks:
+
+    total = len(tasks)
+    any_failed = False
+    for index, task in enumerate(tasks, start=1):
+        prefix = f'[{index}/{total}] {task["task_id"]}'
+        if not config["overwrite_existing"] and result_exists(task["task_id"], responses_dir):
+            print(f"{prefix} SKIPPED")
+            continue
+
+        print(f"{prefix} RUNNING")
         result = run_task(task, config, call_kwargs)
+        save_result(result, responses_dir)
         if result["status"] == "failed":
-            print(f'{result["task_id"]} FAILED | error={result["error"]["type"]}')
+            any_failed = True
+            print(f'{prefix} FAILED | error={result["error"]["type"]}')
+            if not config["continue_on_error"]:
+                break
         else:
             metrics = result["metrics"]
             print(
-                f'{result["task_id"]} SUCCESS | tokens={metrics["total_tokens"]} | '
+                f'{prefix} SUCCESS | tokens={metrics["total_tokens"]} | '
                 f'latency={metrics["latency_ms"]} ms'
             )
+
+    if any_failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
