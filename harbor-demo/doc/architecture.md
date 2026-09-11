@@ -67,7 +67,7 @@ sequenceDiagram
 
 1. `OpenHandsAdapter.execute` mounts the sandbox, reads `task.toml` and `instruction.md`, snapshots files, then asks the model provider for env vars (`LLM_BASE_URL`, `LLM_API_KEY`, proxy).
 2. `SubprocessOpenHandsRunner.run` finds the `openhands` binary.
-3. Before launch, `ensure_joserfc_in_openhands` rewrites SDK 1.21 JWT code from `authlib.jose` to `joserfc` (and installs `joserfc` in that uv-tool env). If the import is already gone, it does nothing.
+3. Before launch, `ensure_joserfc_in_openhands` installs `joserfc` with `uv pip --python` (the uv-tool Python has no `pip` module), then rewrites SDK 1.21 JWT code from `authlib.jose` to `joserfc` if needed.
 4. The runner starts `openhands --headless --json --override-with-envs --task <instruction>` in the workspace.
 5. The adapter diffs the workspace, maps events to a trajectory, and returns `success` / `error` / `timeout`. Scoring happens later in `run_trial`.
 

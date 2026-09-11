@@ -8,19 +8,27 @@ installed uv-tool environment.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 
 def ensure_joserfc_in_openhands(cli_path: Path) -> str | None:
-    """Patch the installed SDK JWT module and install joserfc. None means ok."""
+    """Install joserfc into the CLI env, then patch JWT code if needed. None means ok."""
 
     openai_py = _find_sdk_openai_py(cli_path)
     if openai_py is None:
         return None
+    python = _tool_python(openai_py)
+    if python is None:
+        return f"Could not find the OpenHands uv-tool Python next to {openai_py}."
+    install_error = _install_joserfc(python)
+    if install_error:
+        return install_error
+
     source = openai_py.read_text(encoding="utf-8").replace("\r\n", "\n")
-    if "from authlib.jose import JsonWebKey, jwt" not in source:
+    needs_patch = "from authlib.jose import JsonWebKey, jwt" in source
+    if not needs_patch:
         return None
     patched = patch_authlib_jose_to_joserfc(source)
     if "from authlib.jose import" in patched or "JsonWebKey" in patched:
@@ -32,11 +40,32 @@ def ensure_joserfc_in_openhands(cli_path: Path) -> str | None:
         openai_py.write_text(patched, encoding="utf-8")
     except OSError as exc:
         return f"Cannot rewrite {openai_py} to use joserfc: {exc}"
-    python = _tool_python(openai_py)
-    if python is None:
-        return f"Rewrote {openai_py} but could not find that env's Python to install joserfc."
+    return None
+
+
+def _install_joserfc(python: Path) -> str | None:
+    """uv-managed OpenHands has no pip module; install with uv pip --python."""
+
+    probe = subprocess.run(
+        [str(python), "-c", "import joserfc"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if probe.returncode == 0:
+        return None
+
+    uv = shutil.which("uv")
+    if uv is None:
+        return (
+            "joserfc is missing in the OpenHands env and `uv` is not on PATH. "
+            "Install uv, then: uv pip install --python "
+            f"{python} 'joserfc>=1.0.0'"
+        )
     installed = subprocess.run(
-        [str(python), "-m", "pip", "install", "joserfc>=1.0.0"],
+        [uv, "pip", "install", "--python", str(python), "joserfc>=1.0.0"],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -45,7 +74,7 @@ def ensure_joserfc_in_openhands(cli_path: Path) -> str | None:
     )
     if installed.returncode != 0:
         detail = (installed.stderr or installed.stdout or "").strip()
-        return f"Rewrote JWT module to joserfc but pip install failed: {detail}"
+        return f"uv pip install joserfc failed: {detail}"
     return None
 
 
@@ -143,11 +172,6 @@ def _tool_python(openai_py: Path) -> Path | None:
                 tool_root / "bin" / "python3",
             ]
         )
-    candidates.extend(
-        [
-            Path(sys.executable),
-        ]
-    )
     for path in candidates:
         if path.is_file():
             return path

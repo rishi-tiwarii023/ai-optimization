@@ -54,3 +54,30 @@ def test_patch_replaces_authlib_jose_with_joserfc() -> None:
     assert "JWTClaimsRegistry" in patched
     assert "token.claims.get" in patched
     assert 'self._keys["keys"]' in patched
+
+
+def test_install_joserfc_uses_uv_pip_when_import_missing(monkeypatch, tmp_path) -> None:
+    from src.arms.adapters.agents import openhands_jose as jose
+
+    python = tmp_path / "python"
+    python.write_text("", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+        if cmd[:3] == [str(python), "-c", "import joserfc"]:
+            Result.returncode = 1
+            return Result()
+        return Result()
+
+    monkeypatch.setattr(jose.subprocess, "run", fake_run)
+    monkeypatch.setattr(jose.shutil, "which", lambda name: "/usr/bin/uv")
+    assert jose._install_joserfc(python) is None
+    assert calls[1][:4] == ["/usr/bin/uv", "pip", "install", "--python"]
+    assert calls[1][4] == str(python)
+    assert calls[1][5] == "joserfc>=1.0.0"
+

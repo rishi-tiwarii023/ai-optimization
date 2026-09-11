@@ -159,10 +159,9 @@ source "$HOME/.local/bin/env"
 uv tool install openhands --python 3.12
 export PATH="$HOME/.local/bin:$PATH"
 # CLI currently pins openhands-sdk 1.21, which still imports deprecated authlib.jose.
-# The experiment runner rewrites that JWT module to joserfc on first run.
-# To do the same by hand instead:
-#   UV_PY="$HOME/.local/share/uv/tools/openhands/bin/python"
-#   "$UV_PY" -m pip install 'joserfc>=1.0.0'
+# The experiment runner installs joserfc with `uv pip` (that env has no pip) and
+# rewrites the JWT module on first run. To do the install by hand:
+#   uv pip install --python "$HOME/.local/share/uv/tools/openhands/bin/python" 'joserfc>=1.0.0'
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 
 # Confirm
