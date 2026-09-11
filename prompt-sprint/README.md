@@ -37,7 +37,7 @@ Runtime settings live in `config.json`:
 
 - `provider` — one of `openrouter`, `openai`, `anthropic`, `gemini`, `laguna`
 - `model` — LiteLLM id, including the provider prefix
-- `temperature`, `max_tokens`, `timeout_seconds`
+- `temperature`, `max_tokens` (omit or set `null` to use the provider default), `timeout_seconds`
 - `continue_on_error`, `overwrite_existing`
 - `extra_params` — optional object passed through to `litellm.completion()`
 - `available_models` — optional list of OpenRouter ids; the active `model` must be one of them unless you override with `--model` / `--provider`

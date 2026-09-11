@@ -102,7 +102,9 @@ def validate_config(config, enforce_available_models=True):
         config["available_models"] = cleaned
 
     require_number(config, "temperature")
-    require_number(config, "max_tokens", integer=True)
+    max_tokens = config.get("max_tokens")
+    if max_tokens is not None:
+        require_number(config, "max_tokens", integer=True)
     require_number(config, "timeout_seconds", integer=True)
     require_bool(config, "continue_on_error")
     require_bool(config, "overwrite_existing")
@@ -168,6 +170,22 @@ def extract_usage(response):
     return prompt_tokens, completion_tokens, total_tokens
 
 
+def extract_finish_reason(response):
+    try:
+        reason = response.choices[0].finish_reason
+    except (AttributeError, IndexError, TypeError):
+        return None
+    if reason is None:
+        return None
+    return str(reason)
+
+
+def is_truncated(finish_reason):
+    if not finish_reason:
+        return False
+    return finish_reason.lower() in {"length", "max_tokens", "max_output_tokens"}
+
+
 def extract_cost(response):
     hidden = getattr(response, "_hidden_params", None)
     if not isinstance(hidden, dict):
@@ -199,36 +217,76 @@ def empty_metrics(latency_ms):
     }
 
 
+MAX_CONTINUATIONS = 20
+CONTINUE_PROMPT = (
+    "Continue the previous reply from where it stopped. "
+    "Do not repeat text you already wrote."
+)
+
+
+def completion_kwargs(config, call_kwargs, messages):
+    kwargs = {
+        "model": config["model"],
+        "messages": messages,
+        "temperature": config["temperature"],
+        "timeout": config["timeout_seconds"],
+        "stream": False,
+        **call_kwargs,
+        **config["extra_params"],
+    }
+    max_tokens = config.get("max_tokens")
+    if max_tokens is not None:
+        kwargs["max_tokens"] = max_tokens
+    return kwargs
+
+
 def run_task(task, config, call_kwargs):
     import litellm
 
     started_at = utc_now()
     started = time.perf_counter()
+    messages = [{"role": "user", "content": task["prompt"]}]
+    parts = []
+    prompt_tokens = 0
+    completion_tokens = 0
+    total_tokens = 0
+    cost_sum = 0.0
+    cost_seen = False
+    finish_reason = None
     try:
-        response = litellm.completion(
-            model=config["model"],
-            messages=[{"role": "user", "content": task["prompt"]}],
-            temperature=config["temperature"],
-            max_tokens=config["max_tokens"],
-            timeout=config["timeout_seconds"],
-            stream=False,
-            **call_kwargs,
-            **config["extra_params"],
-        )
+        for _ in range(MAX_CONTINUATIONS + 1):
+            response = litellm.completion(**completion_kwargs(config, call_kwargs, messages))
+            chunk = extract_text(response)
+            parts.append(chunk)
+            finish_reason = extract_finish_reason(response)
+            p, c, t = extract_usage(response)
+            prompt_tokens += p
+            completion_tokens += c
+            total_tokens += t
+            cost = extract_cost(response)
+            if cost is not None:
+                cost_sum += cost
+                cost_seen = True
+            if not is_truncated(finish_reason):
+                break
+            if not chunk:
+                break
+            messages.append({"role": "assistant", "content": chunk})
+            messages.append({"role": "user", "content": CONTINUE_PROMPT})
         latency_ms = round((time.perf_counter() - started) * 1000)
-        prompt_tokens, completion_tokens, total_tokens = extract_usage(response)
         return {
             "task_id": task["task_id"],
             "model": config["model"],
             "status": "success",
             "prompt": task["prompt"],
-            "response": extract_text(response),
+            "response": "".join(parts),
+            "finish_reason": finish_reason,
             "metrics": {
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "total_tokens": total_tokens,
                 "latency_ms": latency_ms,
-                "cost": extract_cost(response),
+                "cost": cost_sum if cost_seen else None,
             },
             "error": None,
             "started_at": started_at,
@@ -241,7 +299,8 @@ def run_task(task, config, call_kwargs):
             "model": config["model"],
             "status": "failed",
             "prompt": task["prompt"],
-            "response": None,
+            "response": "".join(parts) or None,
+            "finish_reason": finish_reason,
             "metrics": empty_metrics(latency_ms),
             "error": {
                 "type": type(exc).__name__,
