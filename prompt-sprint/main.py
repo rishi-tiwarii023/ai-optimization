@@ -9,6 +9,9 @@ import uuid
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
+from scorer import score_response
+from stats import compute_score_stats
+
 PROVIDERS = {
     "openrouter": {"key_env": "OPENROUTER_API_KEY", "prefix": "openrouter/", "base_env": "OPENROUTER_API_BASE"},
     "openai":     {"key_env": "OPENAI_API_KEY",     "prefix": "openai/",     "base_env": None},
@@ -108,6 +111,17 @@ def validate_config(config, enforce_available_models=True):
     require_number(config, "timeout_seconds", integer=True)
     require_bool(config, "continue_on_error")
     require_bool(config, "overwrite_existing")
+    if "scoring" in config:
+        require_bool(config, "scoring")
+    else:
+        config["scoring"] = False
+    judge_model = config.get("judge_model")
+    if judge_model is not None:
+        config["judge_model"] = require_prefixed_model(
+            require_string(config, "judge_model"),
+            spec["prefix"],
+            provider_name,
+        )
 
     extra_params = config.get("extra_params", {})
     if extra_params is None:
@@ -411,7 +425,11 @@ def reported_cost_value(stats):
     return stats["reported_cost"]
 
 
-def build_summary(config, stats, run_id, started_at, finished_at):
+def build_summary(config, stats, run_id, started_at, finished_at, scores):
+    scoring_enabled = bool(config.get("scoring"))
+    score_stats = None
+    if scoring_enabled:
+        score_stats = compute_score_stats(scores)
     return {
         "run_id": run_id,
         "provider": config["provider"],
@@ -430,6 +448,7 @@ def build_summary(config, stats, run_id, started_at, finished_at):
         "cost_unavailable_for_calls": stats["cost_unavailable_for_calls"],
         "total_elapsed_ms": stats["total_elapsed_ms"],
         "average_latency_ms": average_latency_ms(stats),
+        "score_stats": score_stats,
     }
 
 
@@ -465,6 +484,18 @@ def print_summary(config, stats):
     print(f"Reported cost: {reported_cost}")
     print(f'Total elapsed: {format_elapsed(stats["total_elapsed_ms"])}')
     print(f"Average latency: {average_latency} ms")
+    score_stats = compute_score_stats(stats.get("scores") or [])
+    if config.get("scoring"):
+        if not score_stats:
+            print("Score stats: unavailable")
+        else:
+            print(
+                "Score stats: "
+                f'mean={score_stats["mean"]} median={score_stats["median"]} '
+                f'mode={score_stats["mode"]} max={score_stats["max"]} '
+                f'median_range={score_stats["median_range"]} p95={score_stats["p95"]} '
+                f'std_dev={score_stats["std_dev"]}'
+            )
 
 
 def parse_args(argv=None):
@@ -476,6 +507,7 @@ def parse_args(argv=None):
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--provider")
     parser.add_argument("--model")
+    parser.add_argument("--no-scoring", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -493,6 +525,8 @@ def main(argv=None):
     )
     if args.overwrite:
         config["overwrite_existing"] = True
+    if args.no_scoring:
+        config["scoring"] = False
 
     call_kwargs = build_call_kwargs(config)
     tasks = load_tasks(args.tasks)
@@ -521,18 +555,31 @@ def main(argv=None):
         "cost_unavailable_for_calls": 0,
         "latency_sum_ms": 0,
         "total_elapsed_ms": 0,
+        "scores": [],
     }
     run_started = time.perf_counter()
     for index, task in enumerate(tasks, start=1):
         prefix = f'[{index}/{total}] {task["task_id"]}'
         if not config["overwrite_existing"] and result_exists(task["task_id"], responses_dir):
             stats["skipped"] += 1
+            existing = load_json(result_path(task["task_id"], responses_dir))
+            existing_score = existing.get("score") if isinstance(existing, dict) else None
+            if isinstance(existing_score, (int, float)) and not isinstance(existing_score, bool):
+                stats["scores"].append(float(existing_score))
             print(f"{prefix} SKIPPED")
             continue
 
         print(f"{prefix} RUNNING")
         result = run_task(task, config, call_kwargs)
+        if config.get("scoring") and result["status"] == "success":
+            result["score"] = score_response(
+                result["prompt"], result["response"], config, call_kwargs
+            )
+        else:
+            result["score"] = None
         save_result(result, responses_dir)
+        if isinstance(result.get("score"), (int, float)) and not isinstance(result["score"], bool):
+            stats["scores"].append(float(result["score"]))
         metrics = result["metrics"]
         stats["latency_sum_ms"] += metrics["latency_ms"]
         stats["prompt_tokens"] += metrics["prompt_tokens"]
@@ -557,7 +604,10 @@ def main(argv=None):
             )
 
     stats["total_elapsed_ms"] = round((time.perf_counter() - run_started) * 1000)
-    save_summary(build_summary(config, stats, run_id, started_at, utc_now()), responses_dir)
+    save_summary(
+        build_summary(config, stats, run_id, started_at, utc_now(), stats["scores"]),
+        responses_dir,
+    )
     print_summary(config, stats)
     if stats["failed"]:
         sys.exit(1)
