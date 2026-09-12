@@ -39,8 +39,10 @@ Runtime settings live in `config.json`:
 - `model` — LiteLLM id, including the provider prefix
 - `temperature`, `max_tokens` (omit or set `null` to use the provider default), `timeout_seconds`
 - `continue_on_error`, `overwrite_existing`
+- `scoring` — when `true`, each successful response is scored by an LLM judge (0.0–10.0)
+- `judge_model` — optional LiteLLM id for the judge (same provider prefix as `provider`); defaults to `model` if omitted
 - `extra_params` — optional object passed through to `litellm.completion()`
-- `available_models` — optional list of OpenRouter ids; the active `model` must be one of them unless you override with `--model` / `--provider`
+- `available_models` — optional list of OpenRouter ids; the active `model` must be one of them unless you override with `--model` / `--provider`. `judge_model` does not have to be in this list.
 
 Prompts live in `tasks.json`. Add, remove, or replace tasks there only.
 
@@ -54,9 +56,20 @@ python main.py --output responses
 python main.py --task-id task_003
 python main.py --overwrite
 python main.py --provider gemini --model gemini/gemini-2.5-flash
+python main.py --no-scoring
 ```
 
-`--provider` and `--model` override `config.json` for that run only. They are not written back.
+`--provider` and `--model` override `config.json` for that run only. They are not written back. `--no-scoring` skips the judge even if `"scoring": true`.
+
+Score already-saved responses without re-running tasks:
+
+```
+python score.py
+python score.py --task-id task_001
+python score.py --overwrite
+```
+
+`score.py` skips failed tasks and results that already have a score unless you pass `--overwrite`. It then writes `score_stats` into `summary.json`.
 
 Ping the configured model:
 
@@ -68,7 +81,7 @@ python test/connection.py
 
 | File | Role |
 |---|---|
-| `config.json` | Provider, model, generation and run flags |
+| `config.json` | Provider, model, scoring flags, generation and run flags |
 | `tasks.json` | List of `{task_id, prompt}` |
 | `.env` | API keys and optional `api_base` values |
 
@@ -82,7 +95,7 @@ responses/
 └── summary.json
 ```
 
-Each task file has the same schema: `status`, `response`, tokens, latency, and `cost` when LiteLLM reports it (`null` otherwise). `summary.json` aggregates the run (`run_id`, provider, model, counts, tokens, cost availability, elapsed time). Secrets are never printed or saved.
+Each task file has the same schema: `status`, `response`, `score` (0.0–10.0, or `null` if scoring is off or the judge failed), tokens, latency, and `cost` when LiteLLM reports it (`null` otherwise). `summary.json` aggregates the run (`run_id`, provider, model, counts, tokens, cost availability, elapsed time). When scoring ran and at least one score exists, it also includes `score_stats`: `count`, `mean`, `median`, `mode` (binned to 0.5), `max`, `median_range` (IQR), `p95`, `std_dev`. Otherwise `score_stats` is `null`. Secrets are never printed or saved.
 
 Existing task files are skipped unless `overwrite_existing` is true or you pass `--overwrite`.
 
@@ -118,7 +131,7 @@ Nothing in `main.py` needs to change for these five providers.
 Current OpenRouter defaults include:
 
 - `openrouter/poolside/laguna-s-2.1:free`
-- `openrouter/inclusionai/ling-3.0-flash-fin:free`
+- `openrouter/inclusionai/ling-3.0-flash-fin-v1:free`
 - `openrouter/google/gemma-4-26b-a4b-it:free`
 - `openrouter/nvidia/nemotron-3.5-lightning:free`
 
