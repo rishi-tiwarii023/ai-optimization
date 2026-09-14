@@ -27,10 +27,17 @@ export async function api(path, options = {}) {
   return res.json();
 }
 
+function streamUrl(path) {
+  if (import.meta.env.DEV) {
+    return `http://127.0.0.1:8000${path}`;
+  }
+  return `/api${path}`;
+}
+
 export async function streamPost(path, body, onLine) {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(streamUrl(path), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
     body: JSON.stringify(body || {}),
   });
   if (!res.ok) {

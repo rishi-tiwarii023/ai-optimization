@@ -77,6 +77,29 @@ Ping the configured model:
 python test/connection.py
 ```
 
+## Web UI
+
+The React dashboard edits `config.json`, `.env` credentials, and `tasks.json`, and can start `main.py` / `score.py` runs.
+
+Start the API from the project root (venv activated):
+
+```
+pip install -r requirements.txt
+uvicorn api:app --reload --port 8000 --reload-exclude ".venv" --reload-exclude "frontend" --reload-exclude "responses"
+```
+
+In a second terminal:
+
+```
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. Vite proxies `/api` to port 8000. API keys are write-only: the UI never displays a stored key.
+
+How to use Config, Tasks, and Results: [frontend/README.md](frontend/README.md).
+
 ## Inputs
 
 | File | Role |

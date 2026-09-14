@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -35,7 +36,7 @@ load_dotenv(ENV_PATH)
 app = FastAPI(title="PromptSprint")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -275,20 +276,30 @@ async def stream_script(command):
     async with run_lock:
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
+        env["PYTHONIOENCODING"] = "utf-8"
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             cwd=str(ROOT),
             env=env,
+            bufsize=1,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
-        while True:
-            line = await process.stdout.readline()
-            if not line:
-                break
-            text = line.decode("utf-8", errors="replace").rstrip("\r\n")
-            yield f"data: {json.dumps({'line': text})}\n\n"
-        code = await process.wait()
+        loop = asyncio.get_running_loop()
+        yield f"data: {json.dumps({'line': 'starting run'})}\n\n"
+        try:
+            while True:
+                line = await loop.run_in_executor(None, process.stdout.readline)
+                if line == "":
+                    break
+                yield f"data: {json.dumps({'line': line.rstrip()})}\n\n"
+            code = await loop.run_in_executor(None, process.wait)
+        except asyncio.CancelledError:
+            process.kill()
+            raise
         yield f"data: {json.dumps({'done': True, 'exit_code': code})}\n\n"
 
 
@@ -297,7 +308,7 @@ def sse_response(command):
         stream_script(command),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
@@ -324,5 +335,5 @@ if __name__ == "__main__":
         host="127.0.0.1",
         port=8000,
         reload=True,
-        reload_excludes=[".venv", "frontend", ".git"],
+        reload_excludes=[".venv", "frontend", ".git", "responses", "__pycache__"],
     )
