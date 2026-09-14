@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import re
+import ssl
 import sys
 import tempfile
 import time
@@ -9,8 +10,27 @@ import uuid
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
-from scorer import score_response
-from stats import compute_score_stats
+
+def configure_tls():
+    try:
+        import truststore
+
+        truststore.inject_into_ssl()
+    except Exception:
+        pass
+    try:
+        import certifi
+
+        ca_file = certifi.where()
+        for key in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+            os.environ.setdefault(key, ca_file)
+        ssl.create_default_context(cafile=ca_file)
+    except Exception:
+        pass
+
+
+configure_tls()
+
 
 PROVIDERS = {
     "openrouter": {"key_env": "OPENROUTER_API_KEY", "prefix": "openrouter/", "base_env": "OPENROUTER_API_BASE"},
@@ -426,6 +446,8 @@ def reported_cost_value(stats):
 
 
 def build_summary(config, stats, run_id, started_at, finished_at, scores):
+    from stats import compute_score_stats
+
     scoring_enabled = bool(config.get("scoring"))
     score_stats = None
     if scoring_enabled:
@@ -484,6 +506,7 @@ def print_summary(config, stats):
     print(f"Reported cost: {reported_cost}")
     print(f'Total elapsed: {format_elapsed(stats["total_elapsed_ms"])}')
     print(f"Average latency: {average_latency} ms")
+    from stats import compute_score_stats
     score_stats = compute_score_stats(stats.get("scores") or [])
     if config.get("scoring"):
         if not score_stats:
@@ -572,6 +595,7 @@ def main(argv=None):
         print(f"{prefix} RUNNING")
         result = run_task(task, config, call_kwargs)
         if config.get("scoring") and result["status"] == "success":
+            from scorer import score_response
             result["score"] = score_response(
                 result["prompt"], result["response"], config, call_kwargs
             )

@@ -1,17 +1,18 @@
 {
   "provider": "openrouter",
-  "model": "openrouter/poolside/laguna-s-2.1:free",
+  "model": "openrouter/poolside/laguna-s-2.1-v1:free",
   "available_models": [
     "openrouter/poolside/laguna-s-2.1:free",
     "openrouter/inclusionai/ling-3.0-flash-fin-v1:free",
     "openrouter/google/gemma-4-26b-a4b-it:free",
-    "openrouter/nvidia/nemotron-3.5-lightning:free"
+    "openrouter/nvidia/nemotron-3.5-lightning:free",
+    "openrouter/poolside/laguna-s-2.1-v1:free"
   ],
-  "temperature": 0,
+  "temperature": 0.8,
   "max_tokens": 32768,
   "timeout_seconds": 300,
   "continue_on_error": true,
-  "overwrite_existing": false,
+  "overwrite_existing": true,
   "scoring": false,
   "judge_model": "openrouter/inclusionai/ling-3.0-flash-fin-v1:free",
   "extra_params": {}
