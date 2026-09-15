@@ -89,6 +89,11 @@ def score_response(prompt, response, config, call_kwargs):
         kwargs["max_tokens"] = 64
     try:
         completion = litellm.completion(**kwargs)
-        return parse_score(extract_text(completion))
-    except Exception:
+        raw = extract_text(completion)
+        score = parse_score(raw)
+        if score is None:
+            print(f"[scorer] WARNING: no number found in judge response: {raw!r}")
+        return score
+    except Exception as exc:
+        print(f"[scorer] ERROR calling judge model ({judge_model_id(config)}): {exc}")
         return None
