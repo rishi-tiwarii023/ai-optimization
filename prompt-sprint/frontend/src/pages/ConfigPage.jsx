@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
 import FieldRow from "../components/FieldRow.jsx";
+import ProviderInput from "../components/ProviderInput.jsx";
 import Toggle from "../components/Toggle.jsx";
+import {
+  knownPrefixes,
+  normalizeModelId,
+  resolveProvider,
+} from "../providers.js";
 
 const emptyForm = {
   provider: "openrouter",
@@ -30,9 +36,11 @@ export default function ConfigPage() {
   const [notice, setNotice] = useState("");
 
   const selected = useMemo(
-    () => providers.find((item) => item.name === form.provider) || null,
+    () => resolveProvider(form.provider, providers),
     [providers, form.provider]
   );
+  const prefixes = useMemo(() => knownPrefixes(providers), [providers]);
+  const prefix = selected?.prefix || "";
 
   function setField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -47,9 +55,7 @@ export default function ConfigPage() {
         api("/providers"),
       ]);
       setProviders(providerList);
-      const active =
-        providerList.find((item) => item.name === config.provider) ||
-        providerList[0];
+      const active = resolveProvider(config.provider, providerList);
       setForm({
         provider: config.provider,
         model: config.model || "",
@@ -79,8 +85,40 @@ export default function ConfigPage() {
     load();
   }, []);
 
+  function applyProvider(name) {
+    const trimmed = (name || "").trim();
+    const next = resolveProvider(trimmed, providers);
+    const nextPrefix = next?.prefix || "";
+    setForm((prev) => {
+      const providerChanged = Boolean(trimmed) && trimmed !== prev.provider;
+      const nextModels = [];
+      for (const item of prev.available_models) {
+        const normalized = normalizeModelId(item, nextPrefix, prefixes);
+        if (normalized && !nextModels.includes(normalized)) {
+          nextModels.push(normalized);
+        }
+      }
+      return {
+        ...prev,
+        provider: trimmed || prev.provider,
+        api_key: providerChanged ? "" : prev.api_key,
+        api_base: providerChanged
+          ? next?.api_base || ""
+          : prev.api_base || next?.api_base || "",
+        model: normalizeModelId(prev.model, nextPrefix, prefixes) || nextPrefix,
+        available_models: nextModels,
+        judge_model: normalizeModelId(prev.judge_model, nextPrefix, prefixes),
+      };
+    });
+  }
+
   function onProviderChange(name) {
-    const next = providers.find((item) => item.name === name);
+    const known = providers.some((item) => item.name === name);
+    if (known) {
+      applyProvider(name);
+      return;
+    }
+    const next = resolveProvider(name, providers);
     setForm((prev) => ({
       ...prev,
       provider: name,
@@ -90,7 +128,7 @@ export default function ConfigPage() {
   }
 
   function addModel(value) {
-    const model = (value || modelDraft).trim();
+    const model = normalizeModelId(value || modelDraft, prefix, prefixes);
     if (!model) return;
     setForm((prev) => {
       if (prev.available_models.includes(model)) return prev;
@@ -129,10 +167,26 @@ export default function ConfigPage() {
       return;
     }
 
+    const providerName = form.provider.trim();
+    const resolved = resolveProvider(providerName, providers);
+    const nextPrefix = resolved?.prefix || "";
+    const model = normalizeModelId(form.model, nextPrefix, prefixes);
+    const available_models = [];
+    for (const item of form.available_models) {
+      const normalized = normalizeModelId(item, nextPrefix, prefixes);
+      if (normalized && !available_models.includes(normalized)) {
+        available_models.push(normalized);
+      }
+    }
+    if (model && !available_models.includes(model)) {
+      available_models.push(model);
+    }
+    const judgeModel = normalizeModelId(form.judge_model, nextPrefix, prefixes);
+
     const body = {
-      provider: form.provider,
-      model: form.model.trim(),
-      available_models: form.available_models,
+      provider: providerName,
+      model,
+      available_models,
       temperature: Number(form.temperature),
       max_tokens: useDefaultTokens ? null : Number(form.max_tokens),
       timeout_seconds: Number(form.timeout_seconds),
@@ -141,14 +195,21 @@ export default function ConfigPage() {
       scoring: form.scoring,
       extra_params: extraParams,
     };
-    if (form.judge_model.trim()) body.judge_model = form.judge_model.trim();
+    if (judgeModel) body.judge_model = judgeModel;
     if (form.api_key.trim()) body.api_key = form.api_key.trim();
-    if (selected?.base_env) body.api_base = form.api_base.trim();
+    if (resolved?.base_env) body.api_base = form.api_base.trim();
 
     try {
       await api("/config", { method: "PUT", body });
       setNotice("Configuration saved.");
-      setForm((prev) => ({ ...prev, api_key: "" }));
+      setForm((prev) => ({
+        ...prev,
+        provider: providerName,
+        model,
+        available_models,
+        judge_model: judgeModel,
+        api_key: "",
+      }));
       const providerList = await api("/providers");
       setProviders(providerList);
     } catch (err) {
@@ -184,32 +245,43 @@ export default function ConfigPage() {
       ) : null}
 
       <form onSubmit={save} className="panel px-4">
-        <FieldRow label="Provider" hint="LiteLLM provider id">
-          <select
-            className="input max-w-sm"
+        <FieldRow
+          label="Provider"
+          hint={
+            selected?.custom
+              ? `Custom LiteLLM id. Models use ${selected.prefix}`
+              : "Pick a built-in provider or type any LiteLLM id"
+          }
+        >
+          <ProviderInput
             value={form.provider}
-            onChange={(event) => onProviderChange(event.target.value)}
-          >
-            {providers.map((item) => (
-              <option key={item.name} value={item.name}>
-                {item.name}
-              </option>
-            ))}
-          </select>
+            onChange={onProviderChange}
+            onBlur={() => applyProvider(form.provider)}
+            providers={providers}
+            placeholder="openrouter, gemini, groq, ..."
+          />
         </FieldRow>
 
-        <FieldRow label="Model" hint={selected ? `Prefix ${selected.prefix}` : ""}>
+        <FieldRow
+          label="Model"
+          hint={prefix ? `Prefix ${prefix} is added if missing` : ""}
+        >
           <input
             className="input"
             value={form.model}
             onChange={(event) => setField("model", event.target.value)}
+            onBlur={() => {
+              const next = normalizeModelId(form.model, prefix, prefixes);
+              if (next) setField("model", next);
+            }}
+            placeholder={prefix ? `${prefix}<model-id>` : "model id"}
             required
           />
         </FieldRow>
 
         <FieldRow
           label="Available models"
-          hint="Active model must be in this list. Enter to add."
+          hint="Type a model id and press Enter. Prefix is added automatically."
         >
           <div className="flex flex-wrap gap-1.5">
             {form.available_models.map((model) => (
@@ -231,7 +303,7 @@ export default function ConfigPage() {
           </div>
           <input
             className="input mt-2"
-            placeholder="Add model id"
+            placeholder={prefix ? `Add ${prefix}<model-id>` : "Add model id"}
             value={modelDraft}
             onChange={(event) => setModelDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -262,7 +334,14 @@ export default function ConfigPage() {
         </FieldRow>
 
         {selected?.base_env ? (
-          <FieldRow label="Base API URL" hint={selected.base_env}>
+          <FieldRow
+            label="Base API URL"
+            hint={
+              selected.base_optional
+                ? `${selected.base_env} (optional for this provider)`
+                : selected.base_env
+            }
+          >
             <input
               className="input"
               value={form.api_base}
@@ -325,9 +404,17 @@ export default function ConfigPage() {
             {form.scoring ? (
               <input
                 className="input"
-                placeholder="Judge model (optional, same prefix)"
+                placeholder={
+                  prefix
+                    ? `Judge model (optional, ${prefix})`
+                    : "Judge model (optional, same prefix)"
+                }
                 value={form.judge_model}
                 onChange={(event) => setField("judge_model", event.target.value)}
+                onBlur={() => {
+                  const next = normalizeModelId(form.judge_model, prefix, prefixes);
+                  setField("judge_model", next);
+                }}
               />
             ) : null}
           </div>

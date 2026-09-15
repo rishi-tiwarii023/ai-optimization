@@ -22,6 +22,7 @@ from main import (
     load_config,
     load_json,
     load_tasks,
+    provider_spec,
     validate_config,
 )
 
@@ -143,13 +144,15 @@ def config_to_file(body: ConfigUpdate):
 
 
 def env_status(name):
-    spec = PROVIDERS[name]
+    spec = provider_spec(name)
     api_key = os.getenv(spec["key_env"]) or ""
     item = {
         "name": name,
         "key_env": spec["key_env"],
         "prefix": spec["prefix"],
         "base_env": spec["base_env"],
+        "base_optional": bool(spec.get("base_optional")),
+        "custom": name not in PROVIDERS,
         "api_key_set": bool(api_key.strip()),
         "api_base": None,
     }
@@ -160,7 +163,16 @@ def env_status(name):
 
 @app.get("/providers")
 def get_providers():
-    return [env_status(name) for name in PROVIDERS]
+    names = list(PROVIDERS)
+    if CONFIG_PATH.exists():
+        try:
+            config = load_config(str(CONFIG_PATH))
+            current = config.get("provider")
+            if isinstance(current, str) and current.strip() and current.strip() not in names:
+                names.append(current.strip())
+        except Exception:
+            pass
+    return [env_status(name) for name in names]
 
 
 @app.get("/config")
@@ -175,11 +187,12 @@ def put_config(body: ConfigUpdate):
     payload = config_to_file(body)
     validated = call_or_http(validate_config, payload, enforce_available_models=True)
     write_json(CONFIG_PATH, validated)
-    spec = PROVIDERS[validated["provider"]]
+    spec = provider_spec(validated["provider"])
     if body.api_key and body.api_key.strip():
         upsert_env(spec["key_env"], body.api_key.strip())
     if spec["base_env"] is not None and body.api_base is not None:
-        upsert_env(spec["base_env"], body.api_base.strip())
+        if body.api_base.strip() or not spec.get("base_optional"):
+            upsert_env(spec["base_env"], body.api_base.strip())
     return {"ok": True, "config": validated, "provider": env_status(validated["provider"])}
 
 

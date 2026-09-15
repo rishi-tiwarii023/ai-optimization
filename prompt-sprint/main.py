@@ -40,6 +40,26 @@ PROVIDERS = {
     "laguna":     {"key_env": "LAGUNA_API_KEY",     "prefix": "openai/",     "base_env": "LAGUNA_API_BASE"},
 }
 
+PROVIDER_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
+
+
+def provider_spec(name):
+    if name in PROVIDERS:
+        spec = dict(PROVIDERS[name])
+        spec.setdefault("base_optional", False)
+        return spec
+    env_name = name.upper().replace("-", "_")
+    return {
+        "key_env": f"{env_name}_API_KEY",
+        "prefix": f"{name}/",
+        "base_env": f"{env_name}_API_BASE",
+        "base_optional": True,
+    }
+
+
+def known_prefixes():
+    return {spec["prefix"] for spec in PROVIDERS.values()}
+
 
 def fail(message):
     print(message, file=sys.stderr)
@@ -88,40 +108,53 @@ def require_bool(config, key):
     return value
 
 
-def require_prefixed_model(model, prefix, provider_name):
+def uses_other_prefix(model, prefix):
+    if model.startswith(prefix):
+        return False
+    return any(other != prefix and model.startswith(other) for other in known_prefixes())
+
+
+def ensure_prefixed_model(model, prefix, provider_name):
     if not model.startswith(prefix):
-        fail(
-            f'Model {model!r} does not start with expected prefix {prefix!r} '
-            f'for provider "{provider_name}".'
-        )
+        if uses_other_prefix(model, prefix):
+            fail(
+                f'Model {model!r} does not start with expected prefix {prefix!r} '
+                f'for provider "{provider_name}".'
+            )
+        model = prefix + model
     return model
 
 
 def validate_config(config, enforce_available_models=True):
     provider_name = require_string(config, "provider")
-    if provider_name not in PROVIDERS:
-        supported = ", ".join(PROVIDERS)
-        fail(f'Unknown provider {provider_name!r}. Supported providers: {supported}.')
+    if not PROVIDER_NAME_PATTERN.fullmatch(provider_name):
+        fail(
+            f'Invalid provider {provider_name!r}. '
+            "Use a LiteLLM provider id (letters, numbers, underscore, or hyphen)."
+        )
 
-    spec = PROVIDERS[provider_name]
-    model = require_prefixed_model(require_string(config, "model"), spec["prefix"], provider_name)
+    spec = provider_spec(provider_name)
+    model = ensure_prefixed_model(require_string(config, "model"), spec["prefix"], provider_name)
+    config["model"] = model
 
     available_models = config.get("available_models")
     if available_models is not None and enforce_available_models:
-        if not isinstance(available_models, list) or not available_models:
-            fail('Invalid "available_models": expected a non-empty JSON array of model ids.')
+        if not isinstance(available_models, list):
+            fail('Invalid "available_models": expected a JSON array of model ids.')
         cleaned = []
         for index, candidate in enumerate(available_models, start=1):
             if not isinstance(candidate, str) or not candidate.strip():
                 fail(f'Invalid "available_models" item at index {index}: expected a non-empty string.')
-            cleaned.append(
-                require_prefixed_model(candidate.strip(), spec["prefix"], provider_name)
-            )
+            value = candidate.strip()
+            if uses_other_prefix(value, spec["prefix"]):
+                continue
+            prefixed = ensure_prefixed_model(value, spec["prefix"], provider_name)
+            if prefixed not in cleaned:
+                cleaned.append(prefixed)
         if model not in cleaned:
-            fail(
-                f'Model {model!r} is not in available_models. '
-                'Set "model" to one of the listed ids.'
-            )
+            cleaned.append(model)
+        if not cleaned:
+            fail('Invalid "available_models": expected a non-empty JSON array of model ids.')
         config["available_models"] = cleaned
 
     require_number(config, "temperature")
@@ -137,11 +170,16 @@ def validate_config(config, enforce_available_models=True):
         config["scoring"] = False
     judge_model = config.get("judge_model")
     if judge_model is not None:
-        config["judge_model"] = require_prefixed_model(
-            require_string(config, "judge_model"),
-            spec["prefix"],
-            provider_name,
-        )
+        if not isinstance(judge_model, str) or not judge_model.strip():
+            config["judge_model"] = None
+        elif uses_other_prefix(judge_model.strip(), spec["prefix"]):
+            config["judge_model"] = None
+        else:
+            config["judge_model"] = ensure_prefixed_model(
+                judge_model.strip(),
+                spec["prefix"],
+                provider_name,
+            )
 
     extra_params = config.get("extra_params", {})
     if extra_params is None:
@@ -154,7 +192,7 @@ def validate_config(config, enforce_available_models=True):
 
 def build_call_kwargs(config):
     provider_name = config["provider"]
-    spec = PROVIDERS[provider_name]
+    spec = provider_spec(provider_name)
     key_env = spec["key_env"]
     api_key = os.getenv(key_env)
     if not api_key:
@@ -164,9 +202,10 @@ def build_call_kwargs(config):
     base_env = spec["base_env"]
     if base_env:
         api_base = os.getenv(base_env)
-        if not api_base:
+        if api_base and api_base.strip():
+            call_kwargs["api_base"] = api_base.strip()
+        elif not spec.get("base_optional"):
             fail(f'Missing {base_env}. Set it in .env for provider "{provider_name}".')
-        call_kwargs["api_base"] = api_base
     return call_kwargs
 
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, streamPost } from "../api.js";
+import ProviderInput from "../components/ProviderInput.jsx";
 import Toggle from "../components/Toggle.jsx";
 
 function formatMs(value) {
@@ -144,18 +145,14 @@ export default function ResultsPage() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <label className="text-sm">
             <span className="mb-1 block text-xs text-zinc-500">Provider override</span>
-            <select
+            <ProviderInput
+              id="run-provider-options"
               className="input"
               value={provider}
-              onChange={(event) => setProvider(event.target.value)}
-            >
-              <option value="">Use config</option>
-              {providers.map((item) => (
-                <option key={item.name} value={item.name}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+              onChange={setProvider}
+              providers={providers}
+              placeholder="Use config"
+            />
           </label>
           <label className="text-sm">
             <span className="mb-1 block text-xs text-zinc-500">Model override</span>
