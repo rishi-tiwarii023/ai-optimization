@@ -62,10 +62,15 @@ def judge_model_id(config):
 
 
 def score_response(prompt, response, config, call_kwargs):
+    judge_content = (
+        JUDGE_PROMPT
+        .replace("{prompt}", str(prompt))
+        .replace("{response}", str(response))
+    )
     messages = [
         {
             "role": "user",
-            "content": JUDGE_PROMPT.format(prompt=prompt, response=response),
+            "content": judge_content,
         }
     ]
     kwargs = {
