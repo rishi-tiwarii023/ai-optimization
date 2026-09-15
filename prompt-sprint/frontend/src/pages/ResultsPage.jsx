@@ -8,6 +8,20 @@ function formatMs(value) {
   return `${(value / 1000).toFixed(2)} s`;
 }
 
+function scoreColor(score) {
+  if (score == null) return "";
+  if (score >= 8) return "text-green-700";
+  if (score >= 5) return "text-zinc-700";
+  return "text-amber-700";
+}
+
+function scoreBgColor(score) {
+  if (score == null) return "bg-zinc-200";
+  if (score >= 8) return "bg-green-500";
+  if (score >= 5) return "bg-zinc-400";
+  return "bg-amber-500";
+}
+
 function Tile({ label, value }) {
   return (
     <div className="border border-zinc-200 bg-zinc-50 px-3 py-2">
@@ -225,14 +239,62 @@ export default function ResultsPage() {
           </div>
           {scoreStats ? (
             <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+              <Tile label="scored tasks" value={scoreStats.count} />
               <Tile label="score mean" value={scoreStats.mean} />
               <Tile label="score median" value={scoreStats.median} />
               <Tile label="score mode" value={scoreStats.mode} />
               <Tile label="score max" value={scoreStats.max} />
               <Tile label="score p95" value={scoreStats.p95} />
               <Tile label="score std_dev" value={scoreStats.std_dev} />
+              <Tile
+                label="median range"
+                value={
+                  Array.isArray(scoreStats.median_range)
+                    ? `${scoreStats.median_range[0]} – ${scoreStats.median_range[1]}`
+                    : null
+                }
+              />
             </div>
           ) : null}
+          {(() => {
+            const scored = results.filter((r) => r.score != null);
+            if (scored.length === 0) return null;
+            const buckets = [
+              { label: "0–2", min: 0, max: 2 },
+              { label: "2–4", min: 2, max: 4 },
+              { label: "4–6", min: 4, max: 6 },
+              { label: "6–8", min: 6, max: 8 },
+              { label: "8–10", min: 8, max: 10.001 },
+            ];
+            const counts = buckets.map((b) =>
+              scored.filter((r) => r.score >= b.min && r.score < b.max).length,
+            );
+            const maxCount = Math.max(...counts, 1);
+            return (
+              <div className="mt-3">
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Score distribution
+                </div>
+                <div className="flex items-end gap-1">
+                  {buckets.map((b, i) => (
+                    <div key={b.label} className="flex flex-1 flex-col items-center gap-1">
+                      <span className="text-xs text-zinc-500">{counts[i]}</span>
+                      <div className="w-full bg-zinc-100" style={{ height: 56 }}>
+                        <div
+                          className={`w-full transition-all ${i >= 3 ? "bg-green-500" : i === 2 ? "bg-zinc-400" : "bg-amber-500"}`}
+                          style={{
+                            height: `${(counts[i] / maxCount) * 100}%`,
+                            marginTop: `${((maxCount - counts[i]) / maxCount) * 100}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-zinc-400">{b.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </section>
       ) : (
         <p className="mb-4 text-sm text-zinc-500">No summary.json yet.</p>
@@ -268,7 +330,15 @@ export default function ResultsPage() {
               >
                 <td className="px-3 py-2 font-mono text-xs">{item.task_id}</td>
                 <td className="px-3 py-2">{item.status}</td>
-                <td className="px-3 py-2">{item.score ?? "—"}</td>
+                <td className="px-3 py-2">
+                  {item.score == null ? (
+                    "—"
+                  ) : (
+                    <span className={`font-semibold ${scoreColor(item.score)}`}>
+                      {item.score.toFixed(1)}
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-2">{item.metrics?.total_tokens ?? "—"}</td>
                 <td className="px-3 py-2">{item.metrics?.latency_ms ?? "—"}</td>
                 <td className="px-3 py-2">
@@ -340,9 +410,25 @@ export default function ResultsPage() {
                 <dt className="text-xs text-zinc-500">model</dt>
                 <dd className="break-all font-mono text-xs">{selected.model}</dd>
               </div>
-              <div>
+              <div className="col-span-2">
                 <dt className="text-xs text-zinc-500">score</dt>
-                <dd>{selected.score ?? "—"}</dd>
+                {selected.score == null ? (
+                  <dd>—</dd>
+                ) : (
+                  <dd>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className={`text-sm font-semibold ${scoreColor(selected.score)}`}>
+                        {selected.score.toFixed(1)} / 10
+                      </span>
+                    </div>
+                    <div className="mt-1 h-2 w-full rounded-full bg-zinc-100">
+                      <div
+                        className={`h-2 rounded-full transition-all ${scoreBgColor(selected.score)}`}
+                        style={{ width: `${(selected.score / 10) * 100}%` }}
+                      />
+                    </div>
+                  </dd>
+                )}
               </div>
               <div>
                 <dt className="text-xs text-zinc-500">finish_reason</dt>
@@ -379,9 +465,34 @@ export default function ResultsPage() {
               <div className="mb-1 text-xs uppercase tracking-wide text-zinc-500">
                 Metrics
               </div>
-              <pre className="whitespace-pre-wrap border border-zinc-200 bg-zinc-50 p-2 font-mono text-xs">
-                {JSON.stringify(selected.metrics, null, 2)}
-              </pre>
+              {selected.metrics ? (
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border border-zinc-200 bg-zinc-50 p-3 text-sm">
+                  <div>
+                    <dt className="text-xs text-zinc-500">prompt tokens</dt>
+                    <dd className="font-mono">{selected.metrics.prompt_tokens ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-zinc-500">completion tokens</dt>
+                    <dd className="font-mono">{selected.metrics.completion_tokens ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-zinc-500">total tokens</dt>
+                    <dd className="font-mono">{selected.metrics.total_tokens ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-zinc-500">latency</dt>
+                    <dd className="font-mono">{formatMs(selected.metrics.latency_ms)}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-xs text-zinc-500">cost</dt>
+                    <dd className="font-mono">
+                      {selected.metrics.cost == null ? "unavailable" : selected.metrics.cost}
+                    </dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="text-sm text-zinc-500">—</p>
+              )}
             </div>
           </aside>
         </div>
