@@ -34,9 +34,9 @@ configure_tls()
 
 PROVIDERS = {
     "openrouter": {"key_env": "OPENROUTER_API_KEY", "prefix": "openrouter/", "base_env": "OPENROUTER_API_BASE"},
-    "openai":     {"key_env": "OPENAI_API_KEY",     "prefix": "openai/",     "base_env": None},
-    "anthropic":  {"key_env": "ANTHROPIC_API_KEY",  "prefix": "anthropic/",  "base_env": None},
-    "gemini":     {"key_env": "GEMINI_API_KEY",     "prefix": "gemini/",     "base_env": None},
+    "openai":     {"key_env": "OPENAI_API_KEY",     "prefix": "openai/",     "base_env": "OPENAI_API_BASE", "base_optional": True},
+    "anthropic":  {"key_env": "ANTHROPIC_API_KEY",  "prefix": "anthropic/",  "base_env": "ANTHROPIC_API_BASE", "base_optional": True},
+    "gemini":     {"key_env": "GEMINI_API_KEY",     "prefix": "gemini/",     "base_env": "GEMINI_API_BASE", "base_optional": True},
     "laguna":     {"key_env": "LAGUNA_API_KEY",     "prefix": "openai/",     "base_env": "LAGUNA_API_BASE"},
 }
 
@@ -199,13 +199,12 @@ def build_call_kwargs(config):
         fail(f'Missing {key_env}. Set it in .env for provider "{provider_name}".')
 
     call_kwargs = {"api_key": api_key}
-    base_env = spec["base_env"]
-    if base_env:
-        api_base = os.getenv(base_env)
-        if api_base and api_base.strip():
-            call_kwargs["api_base"] = api_base.strip()
-        elif not spec.get("base_optional"):
-            fail(f'Missing {base_env}. Set it in .env for provider "{provider_name}".')
+    base_env = spec.get("base_env")
+    api_base = (os.getenv(base_env) or "").strip() if base_env else ""
+    if api_base:
+        call_kwargs["api_base"] = api_base
+    elif base_env and not spec.get("base_optional"):
+        fail(f'Missing {base_env}. Set it in .env for provider "{provider_name}".')
     return call_kwargs
 
 

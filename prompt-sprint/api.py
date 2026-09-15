@@ -154,10 +154,8 @@ def env_status(name):
         "base_optional": bool(spec.get("base_optional")),
         "custom": name not in PROVIDERS,
         "api_key_set": bool(api_key.strip()),
-        "api_base": None,
+        "api_base": (os.getenv(spec["base_env"]) or "") if spec.get("base_env") else "",
     }
-    if spec["base_env"]:
-        item["api_base"] = os.getenv(spec["base_env"]) or ""
     return item
 
 
@@ -190,7 +188,7 @@ def put_config(body: ConfigUpdate):
     spec = provider_spec(validated["provider"])
     if body.api_key and body.api_key.strip():
         upsert_env(spec["key_env"], body.api_key.strip())
-    if spec["base_env"] is not None and body.api_base is not None:
+    if spec.get("base_env") and body.api_base is not None:
         if body.api_base.strip() or not spec.get("base_optional"):
             upsert_env(spec["base_env"], body.api_base.strip())
     return {"ok": True, "config": validated, "provider": env_status(validated["provider"])}

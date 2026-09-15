@@ -123,7 +123,7 @@ export default function ConfigPage() {
       ...prev,
       provider: name,
       api_key: "",
-      api_base: next?.api_base || "",
+      api_base: next?.api_base || prev.api_base,
     }));
   }
 
@@ -197,7 +197,7 @@ export default function ConfigPage() {
     };
     if (judgeModel) body.judge_model = judgeModel;
     if (form.api_key.trim()) body.api_key = form.api_key.trim();
-    if (resolved?.base_env) body.api_base = form.api_base.trim();
+    body.api_base = form.api_base.trim();
 
     try {
       await api("/config", { method: "PUT", body });
@@ -209,6 +209,7 @@ export default function ConfigPage() {
         available_models,
         judge_model: judgeModel,
         api_key: "",
+        api_base: form.api_base.trim(),
       }));
       const providerList = await api("/providers");
       setProviders(providerList);
@@ -333,22 +334,23 @@ export default function ConfigPage() {
           />
         </FieldRow>
 
-        {selected?.base_env ? (
-          <FieldRow
-            label="Base API URL"
-            hint={
-              selected.base_optional
-                ? `${selected.base_env} (optional for this provider)`
+        <FieldRow
+          label="Base API URL"
+          hint={
+            selected?.base_env
+              ? selected.base_optional || selected.custom
+                ? `${selected.base_env} — used as LiteLLM api_base`
                 : selected.base_env
-            }
-          >
-            <input
-              className="input"
-              value={form.api_base}
-              onChange={(event) => setField("api_base", event.target.value)}
-            />
-          </FieldRow>
-        ) : null}
+              : "LiteLLM api_base for this provider"
+          }
+        >
+          <input
+            className="input"
+            value={form.api_base}
+            onChange={(event) => setField("api_base", event.target.value)}
+            placeholder="https://..."
+          />
+        </FieldRow>
 
         <FieldRow label="Temperature" hint="0.0 – 2.0">
           <input
