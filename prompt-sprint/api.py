@@ -23,8 +23,10 @@ from main import (
     load_json,
     load_tasks,
     provider_spec,
+    save_json,
     validate_config,
 )
+from run_history import list_run_index, load_run_snapshot, refresh_stats_snapshot
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.json"
@@ -336,6 +338,29 @@ async def post_run(body: Optional[RunBody] = None):
 async def post_score(body: Optional[ScoreBody] = None):
     payload = body or ScoreBody()
     return sse_response(build_script_command("score.py", payload))
+
+
+@app.get("/runs")
+def get_runs():
+    return {"runs": list_run_index(str(RESPONSES_PATH), load_json)}
+
+
+@app.get("/runs/{run_id}")
+def get_run(run_id: str):
+    if not run_id or run_id.startswith("."):
+        http_fail(f"Invalid run_id {run_id!r}.")
+    snapshot = load_run_snapshot(str(RESPONSES_PATH), run_id, load_json)
+    if snapshot is None:
+        http_fail(f"Missing run: {run_id}", 404)
+    return snapshot
+
+
+@app.post("/stats")
+async def post_stats():
+    if run_lock.locked():
+        http_fail("A run is already in progress", 409)
+    async with run_lock:
+        return refresh_stats_snapshot(str(RESPONSES_PATH), load_json, save_json)
 
 
 if __name__ == "__main__":

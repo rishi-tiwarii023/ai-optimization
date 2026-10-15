@@ -666,10 +666,11 @@ def main(argv=None):
             )
 
     stats["total_elapsed_ms"] = round((time.perf_counter() - run_started) * 1000)
-    save_summary(
-        build_summary(config, stats, run_id, started_at, utc_now(), stats["scores"]),
-        responses_dir,
-    )
+    summary = build_summary(config, stats, run_id, started_at, utc_now(), stats["scores"])
+    save_summary(summary, responses_dir)
+    from run_history import record_run_snapshot
+
+    record_run_snapshot(responses_dir, "run", summary, save_json, run_id=run_id)
     print_summary(config, stats)
     if stats["failed"]:
         sys.exit(1)

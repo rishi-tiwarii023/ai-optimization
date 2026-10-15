@@ -14,6 +14,7 @@ from main import (
     validate_config,
 )
 from scorer import score_response
+from run_history import record_run_snapshot
 from stats import compute_score_stats
 
 
@@ -128,6 +129,14 @@ def main(argv=None):
     all_paths = list_result_paths(args.output)
     scores = collect_scores(all_paths)
     update_summary(args.output, scores)
+    summary_path = os.path.join(args.output, "summary.json")
+    if os.path.exists(summary_path):
+        summary = load_json(summary_path)
+        if not isinstance(summary, dict):
+            summary = {}
+    else:
+        summary = {}
+    record_run_snapshot(args.output, "score", summary, save_json)
     print()
     print(f"Scored: {scored}")
     print(f"Skipped: {skipped}")
