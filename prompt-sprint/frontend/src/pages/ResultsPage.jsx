@@ -32,6 +32,146 @@ function Tile({ label, value }) {
   );
 }
 
+function formatCapturedIst(run) {
+  if (!run) return "—";
+  if (run.captured_at_ist) return run.captured_at_ist;
+  const raw = run.captured_at || run.started_at;
+  if (!raw) return "—";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  const parts = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const pick = (type) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${pick("year")}-${pick("month")}-${pick("day")} ${pick("hour")}:${pick("minute")}:${pick("second")} IST`;
+}
+
+function formatStat(value) {
+  if (value == null) return "—";
+  return String(value);
+}
+
+function scoreBucketColor(index) {
+  if (index >= 3) return "bg-green-500";
+  if (index === 2) return "bg-zinc-400";
+  return "bg-amber-500";
+}
+
+const SCORE_BUCKETS = [
+  { label: "0–2", min: 0, max: 2 },
+  { label: "2–4", min: 2, max: 4 },
+  { label: "4–6", min: 4, max: 6 },
+  { label: "6–8", min: 6, max: 8 },
+  { label: "8–10", min: 8, max: 10.001 },
+];
+
+function ScoreDistributionChart({ results }) {
+  const scored = results.filter((r) => r.score != null);
+  if (scored.length === 0) return null;
+
+  const counts = SCORE_BUCKETS.map((bucket) =>
+    scored.filter((r) => r.score >= bucket.min && r.score < bucket.max).length,
+  );
+  const maxCount = Math.max(...counts, 1);
+  const chartHeight = 96;
+
+  return (
+    <div className="mt-4 border border-zinc-200 bg-white p-4">
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          Score distribution
+        </div>
+        <div className="text-xs text-zinc-500">{scored.length} scored task(s)</div>
+      </div>
+      <div className="grid grid-cols-5 gap-2 sm:gap-4">
+        {SCORE_BUCKETS.map((bucket, index) => {
+          const count = counts[index];
+          const barHeight =
+            count === 0 ? 0 : Math.max(4, Math.round((count / maxCount) * chartHeight));
+          return (
+            <div key={bucket.label} className="flex min-w-0 flex-col items-center">
+              <span className="mb-2 text-sm font-medium tabular-nums text-zinc-800">
+                {count}
+              </span>
+              <div
+                className="flex w-full items-end justify-center border-b border-zinc-200 bg-zinc-50 px-1"
+                style={{ height: chartHeight }}
+              >
+                <div
+                  className={`w-full max-w-10 rounded-t-sm ${scoreBucketColor(index)}`}
+                  style={{ height: barHeight }}
+                  title={`${count} task(s) in ${bucket.label}`}
+                />
+              </div>
+              <span className="mt-2 text-center text-[11px] leading-tight text-zinc-500">
+                {bucket.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RunScoreStatsTable({ runs, emptyMessage }) {
+  return (
+    <table className="w-full border-collapse text-sm">
+      <thead>
+        <tr className="border-b border-zinc-200 bg-zinc-50 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <th className="px-3 py-2">time (IST)</th>
+          <th className="px-3 py-2">model</th>
+          <th className="px-3 py-2">count</th>
+          <th className="px-3 py-2">mean</th>
+          <th className="px-3 py-2">median</th>
+          <th className="px-3 py-2">mode</th>
+          <th className="px-3 py-2">max</th>
+          <th className="px-3 py-2">median_range</th>
+          <th className="px-3 py-2">p95</th>
+          <th className="px-3 py-2">std_dev</th>
+        </tr>
+      </thead>
+      <tbody>
+        {runs.map((run) => {
+          const stats = run.score_stats;
+          return (
+            <tr key={run.run_id} className="border-b border-zinc-200">
+              <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
+                {formatCapturedIst(run)}
+              </td>
+              <td className="max-w-[14rem] px-3 py-2 break-all font-mono text-xs">
+                {run.model ?? "—"}
+              </td>
+              <td className="px-3 py-2">{formatStat(stats?.count)}</td>
+              <td className="px-3 py-2">{formatStat(stats?.mean)}</td>
+              <td className="px-3 py-2">{formatStat(stats?.median)}</td>
+              <td className="px-3 py-2">{formatStat(stats?.mode)}</td>
+              <td className="px-3 py-2">{formatStat(stats?.max)}</td>
+              <td className="px-3 py-2">{formatStat(stats?.median_range)}</td>
+              <td className="px-3 py-2">{formatStat(stats?.p95)}</td>
+              <td className="px-3 py-2">{formatStat(stats?.std_dev)}</td>
+            </tr>
+          );
+        })}
+        {runs.length === 0 ? (
+          <tr>
+            <td colSpan={10} className="px-3 py-8 text-center text-zinc-500">
+              {emptyMessage}
+            </td>
+          </tr>
+        ) : null}
+      </tbody>
+    </table>
+  );
+}
+
 function isRateLimitFailure(item) {
   if (!item || item.status !== "failed" || !item.error) return false;
   const type = String(item.error.type || "");
@@ -50,9 +190,15 @@ export default function ResultsPage() {
   const [logs, setLogs] = useState([]);
   const [summary, setSummary] = useState(null);
   const [results, setResults] = useState([]);
+  const [runs, setRuns] = useState([]);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
   const logRef = useRef(null);
+
+  async function loadRuns() {
+    const data = await api("/runs");
+    setRuns(data.runs || []);
+  }
 
   async function loadResults() {
     try {
@@ -71,11 +217,20 @@ export default function ResultsPage() {
     }
   }
 
+  async function refreshData() {
+    try {
+      await loadResults();
+      await loadRuns();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   useEffect(() => {
     api("/providers")
       .then(setProviders)
       .catch((err) => setError(err.message));
-    loadResults();
+    refreshData();
   }, []);
 
   useEffect(() => {
@@ -113,7 +268,35 @@ export default function ResultsPage() {
         setLogs((prev) => [...prev, line]);
       });
       setLogs((prev) => [...prev, `exit_code=${code}`]);
-      await loadResults();
+      await refreshData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function formatScoreStatsLog(stats) {
+    if (!stats) return null;
+    return (
+      "Score stats: " +
+      `count=${stats.count} mean=${stats.mean} median=${stats.median} ` +
+      `mode=${stats.mode} max=${stats.max} median_range=${stats.median_range} ` +
+      `p95=${stats.p95} std_dev=${stats.std_dev}`
+    );
+  }
+
+  async function captureStats() {
+    setRunning(true);
+    setError("");
+    setLogs(["Refreshing score stats from saved task results…"]);
+    try {
+      const result = await api("/stats", { method: "POST" });
+      const lines = [result.message];
+      const statsLine = formatScoreStatsLog(result.score_stats);
+      if (statsLine) lines.push(statsLine);
+      setLogs(lines);
+      await refreshData();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -194,6 +377,14 @@ export default function ResultsPage() {
           >
             Score
           </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={running}
+            onClick={() => captureStats()}
+          >
+            Stats
+          </button>
         </div>
         <div
           ref={logRef}
@@ -243,55 +434,10 @@ export default function ResultsPage() {
               <Tile label="score max" value={scoreStats.max} />
               <Tile label="score p95" value={scoreStats.p95} />
               <Tile label="score std_dev" value={scoreStats.std_dev} />
-              <Tile
-                label="median range"
-                value={
-                  Array.isArray(scoreStats.median_range)
-                    ? `${scoreStats.median_range[0]} – ${scoreStats.median_range[1]}`
-                    : null
-                }
-              />
+              <Tile label="median range (IQR)" value={scoreStats.median_range} />
             </div>
           ) : null}
-          {(() => {
-            const scored = results.filter((r) => r.score != null);
-            if (scored.length === 0) return null;
-            const buckets = [
-              { label: "0–2", min: 0, max: 2 },
-              { label: "2–4", min: 2, max: 4 },
-              { label: "4–6", min: 4, max: 6 },
-              { label: "6–8", min: 6, max: 8 },
-              { label: "8–10", min: 8, max: 10.001 },
-            ];
-            const counts = buckets.map((b) =>
-              scored.filter((r) => r.score >= b.min && r.score < b.max).length,
-            );
-            const maxCount = Math.max(...counts, 1);
-            return (
-              <div className="mt-3">
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  Score distribution
-                </div>
-                <div className="flex items-end gap-1">
-                  {buckets.map((b, i) => (
-                    <div key={b.label} className="flex flex-1 flex-col items-center gap-1">
-                      <span className="text-xs text-zinc-500">{counts[i]}</span>
-                      <div className="w-full bg-zinc-100" style={{ height: 56 }}>
-                        <div
-                          className={`w-full transition-all ${i >= 3 ? "bg-green-500" : i === 2 ? "bg-zinc-400" : "bg-amber-500"}`}
-                          style={{
-                            height: `${(counts[i] / maxCount) * 100}%`,
-                            marginTop: `${((maxCount - counts[i]) / maxCount) * 100}%`,
-                          }}
-                        />
-                      </div>
-                      <span className="text-[10px] text-zinc-400">{b.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
+          <ScoreDistributionChart results={results} />
         </section>
       ) : (
         <p className="mb-4 text-sm text-zinc-500">No summary.json yet.</p>
@@ -369,6 +515,23 @@ export default function ResultsPage() {
             ) : null}
           </tbody>
         </table>
+      </section>
+
+      <section className="panel mt-4 overflow-x-auto">
+        <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Run stats
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Historical score aggregates for benchmarking. Each Run, Score, or Stats action appends a
+            row (time in IST, model from summary). Click Stats to snapshot current task scores
+            without re-running the model.
+          </p>
+        </div>
+        <RunScoreStatsTable
+          runs={runs}
+          emptyMessage="No run snapshots yet. Run tasks, score, or click Stats."
+        />
       </section>
 
       {selected ? (

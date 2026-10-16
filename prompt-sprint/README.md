@@ -115,8 +115,13 @@ responses/
 ├── task_001.json
 ├── …
 ├── task_010.json
-└── summary.json
+├── summary.json
+└── runs/
+    ├── index.json
+    └── <run_id>.json
 ```
+
+Each completed **Run**, **Score**, or **Stats** capture appends a run snapshot under `responses/runs/` (summary plus per-task `task_id`, `status`, `score`, tokens, latency, cost). The API exposes `GET /runs`, `GET /runs/{run_id}`, and `POST /stats` for the Results page.
 
 Each task file has the same schema: `status`, `response`, `score` (0.0–10.0, or `null` if scoring is off or the judge failed), tokens, latency, and `cost` when LiteLLM reports it (`null` otherwise). `summary.json` aggregates the run (`run_id`, provider, model, counts, tokens, cost availability, elapsed time). When scoring ran and at least one score exists, it also includes `score_stats`: `count`, `mean`, `median`, `mode` (binned to 0.5), `max`, `median_range` (IQR), `p95`, `std_dev`. Otherwise `score_stats` is `null`. Secrets are never printed or saved.
 
@@ -169,3 +174,71 @@ python main.py --provider anthropic --model anthropic/<model-id> --overwrite
 1. Add one row to `PROVIDERS` (`key_env`, `"openai/"` prefix, `base_env`).
 2. Add those variables to `.env.example`.
 3. Set provider and model in `config.json`.
+
+## Dashboard: runs, scoring, and stats
+
+This section describes what happens when you use the **Results** page in the web UI (`http://localhost:5173/results`). The UI calls `api.py`, which runs the same Python entry points as the CLI. See [frontend/README.md](frontend/README.md) for page-by-page UI notes.
+
+### Creating runs from the dashboard
+
+1. Start the API (`uvicorn api:app …`) and the frontend (`npm run dev` in `frontend/`).
+2. On **Config**, set provider, model, API key, and flags (including `scoring`). On **Tasks**, edit prompts and **Save all**.
+3. Open **Results**. Optional overrides for a single job:
+   - **Provider override** / **Model override** — passed to `main.py` or `score.py` as `--provider` / `--model`; `config.json` is not modified.
+   - **Task ID filter** — runs one task (`--task-id`).
+   - **Overwrite** — replaces existing `responses/<task_id>.json` files (`--overwrite`).
+   - **No scoring** — only for **Run**; sets `--no-scoring` even when `"scoring": true` in config.
+
+| Button | API | Backend | What it does |
+|--------|-----|---------|----------------|
+| **Run** | `POST /run` (SSE stream) | `main.py` | Executes each task via LiteLLM; writes `responses/task_*.json` and `responses/summary.json`; optionally scores each successful response; appends a **run** snapshot under `responses/runs/`. |
+| **Score** | `POST /score` (SSE stream) | `score.py` | Judges already-saved successful responses; updates `score` on each task file and `score_stats` in `summary.json`; appends a **score** snapshot. |
+| **Stats** | `POST /stats` (JSON) | `run_history.refresh_stats_snapshot` | No LLM calls. Re-reads all task files, recomputes aggregates, updates `summary.json`, appends a **stats** snapshot for benchmarking. |
+
+While **Run** or **Score** is active, the log panel streams process output. Only one job runs at a time (API lock). When a job finishes, summary tiles, the task table, score distribution chart, and **Run stats** table refresh.
+
+To compare models from the dashboard: change **Model override** (or config), run tasks with **Overwrite**, then use **Run stats** rows (time in IST + model) to compare mean, median, and other aggregates across snapshots.
+
+### How scoring works
+
+Scoring is implemented in `scorer.py` and is controlled by `config.json`:
+
+- `"scoring": true` — during `main.py`, after each **successful** task, the judge runs automatically.
+- `"judge_model"` — optional LiteLLM model id for the judge; defaults to the main `"model"` if omitted.
+
+The judge is a separate `litellm.completion()` call with `temperature: 0` and a short `max_tokens` cap. It receives a fixed rubric (accuracy, completeness, conciseness, code quality) and must return **only a number**. The first numeric token in the reply is parsed and clamped to **0.0–10.0**. If parsing fails or the judge errors, `score` is stored as `null` on that task.
+
+**Score** (`score.py` or the dashboard button) re-judges without re-running prompts:
+
+- Skips tasks whose `status` is not `success`.
+- Skips tasks that already have a score unless **Overwrite** is on.
+- Writes the new `score` back to each `responses/<task_id>.json` file.
+
+Scores on disk are the input for all aggregate statistics below.
+
+### How stats are generated
+
+Aggregate statistics live in `stats.py` as `compute_score_stats(scores)`. Given a list of numeric scores, it returns:
+
+| Field | Meaning |
+|-------|---------|
+| `count` | Number of scores |
+| `mean`, `median`, `max` | Standard aggregates |
+| `mode` | Most frequent score after binning to **0.5** steps |
+| `median_range` | Interquartile range (Q3 − Q1) |
+| `p95` | 95th percentile |
+| `std_dev` | Sample standard deviation (0 if only one score) |
+
+**Where stats are written**
+
+1. **`responses/summary.json`** — after each `main.py` run (when scoring is enabled and at least one score exists), after `score.py`, and when you click **Stats** (`score_stats` is recomputed from all current task files).
+2. **Dashboard** — Summary tiles and the score distribution chart use `summary.json` and live task results. The **Run stats** table lists every saved snapshot from `GET /runs` (newest first), with **time (IST)**, **model**, and the `score_stats` columns.
+3. **`responses/runs/`** — each **Run**, **Score**, or **Stats** action appends `<run_id>.json` plus an entry in `runs/index.json`, preserving history for model benchmarking. **Stats** does not call the model; it snapshots the scores already present on task files.
+
+CLI equivalents:
+
+```
+python capture_stats.py    # same logic as POST /stats
+```
+
+If every task has `score: null` (scoring off, judge failed, or no successful responses), aggregates are empty and the UI shows `—` until valid scores exist.

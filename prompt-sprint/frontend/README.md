@@ -124,6 +124,8 @@ Existing result files are skipped unless I turn overwrite on.
 
 I click **Score** to run `score.py` on already-saved responses (failed tasks are skipped). I use **Overwrite** if I want to rescore. `score_stats` is written into `responses/summary.json`.
 
+I click **Stats** to append a new benchmark row from current task scores (no model call). **Run** and **Score** also append when they finish. The **Run stats** table keeps every snapshot with **time (IST)**, **model**, and score aggregates (count, mean, median, mode, max, median_range, p95, std_dev) so I can compare models over time.
+
 ### Summary
 
 Tiles come from `responses/summary.json`: run id, provider, model, timestamps, counts (total / successful / failed / skipped), tokens, reported cost, elapsed time, average latency. I only see score stats (mean, median, mode, max, p95, std_dev) when scoring produced values.
